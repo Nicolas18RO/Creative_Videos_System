@@ -1,0 +1,2801 @@
+# Technical Design Document — AI Creative Operating System (AI-COS)
+
+**Versión:** 1.0  
+**Tipo:** Technical Design Document (TDD)  
+**Proyecto:** AI Creative Operating System  
+**Stack principal:** Python 3.11 · FastAPI · ChromaDB · SQLite · PyQt6  
+**Filosofía:** Local-first · Modular · Cursor-first · MVP-incremental  
+**Audiencia:** Developer (solo) + Cursor Pro como copiloto  
+
+---
+
+## Tabla de Contenidos
+
+1. System Overview
+2. Architecture Philosophy
+3. High-Level Architecture
+4. Core Modules Design
+5. Semantic Library Architecture
+6. Embeddings & Vector Search Design
+7. Script-to-Visual Pipeline
+8. AI Classification System
+9. Prompt Intelligence Architecture
+10. Storage Architecture
+11. Database Design
+12. Multimedia Processing Pipeline
+13. AI Integration Layer
+14. Desktop App Architecture
+15. Performance & Scalability
+16. Background Jobs System
+17. Error Handling Strategy
+18. Security & Privacy
+19. Cursor-First Development Strategy
+20. Recommended Tech Stack
+21. MVP Technical Scope
+22. Development Roadmap
+23. Technical Risks
+24. Future Expansion Opportunities
+
+---
+
+# 1. System Overview
+
+## Propósito
+
+El AI-COS es un sistema de inteligencia creativa audiovisual que actúa como capa semántica sobre una biblioteca de ~1,247 clips de video organizados en una taxonomía de 5 dimensiones. Su función principal es traducir texto de guion (extraído de audio MP3) en recomendaciones de clips concretas, detectar vacíos en la biblioteca, y clasificar automáticamente activos nuevos.
+
+El sistema no es un editor de video. No reemplaza CapCut. Es el motor cognitivo que ocurre **antes** de abrir el editor — la fase de selección de assets que actualmente consume el 60–70% del tiempo de producción.
+
+## Visión Técnica
+
+Un proceso de Python local con cuatro pipelines coordinados:
+
+- **Ingestion Pipeline:** MP3 → transcript → escenas → conceptos semánticos.
+- **Retrieval Pipeline:** concepto → embedding → ChromaDB query → reranking → recomendaciones.
+- **Gap Pipeline:** escenas sin match → keywords TikTok → prompts IA.
+- **Classification Pipeline:** clip nuevo → frame → visión IA → taxonomía → indexado.
+
+Estos cuatro pipelines son expuestos vía una FastAPI local en `localhost:8000`. Un frontend PyQt6 (MVP) o Tauri (Fase 4) consume esta API. Todo corre en la misma máquina. No hay servidor externo. No hay base de datos remota. Las únicas llamadas de red son a las APIs de OpenAI/Anthropic para embeddings, LLM y visión.
+
+## Flujo Principal
+
+```
+[Productor] → arrastra MP3 a dashboard
+           ↓
+[M1: Script Analyzer]
+  faster-whisper → Transcript
+  Segmenter      → List[Scene]
+  ConceptExtractor → Scene.concept (spaCy → LLM fallback)
+           ↓
+[M2: Clip Recommender]
+  Embedder        → query_vector
+  ChromaDB        → top-15 candidates
+  TaxonomyBooster → re-ranked top-5
+  Dashboard       → muestra thumbnails + scores
+           ↓
+[M3: Gap Handler]  (escenas con score < 0.65)
+  LLMService      → TikTok keywords
+  LLMService      → AI image/motion prompts
+  Dashboard       → muestra gaps con sugerencias
+           ↓
+[Productor] → revisa, acepta, rechaza
+           ↓
+[CapCut] → trabajo de edición real con lista de clips seleccionados
+```
+
+---
+
+# 2. Architecture Philosophy
+
+## Por Qué Local-First
+
+Las razones son cuatro y ninguna es negociable para este proyecto:
+
+**Latencia.** Un productor que espera 3 segundos por una recomendación de clip abandona el flujo. ChromaDB local responde en < 50ms sobre 10,000 clips. Un servicio cloud agrega 200–800ms de overhead de red mínimo.
+
+**Privacidad.** Los creativos de dropshipping son IP comercial. Los guiones revelan estrategias de marketing, productos en prueba, y ángulos de conversión. Subir audio y metadata de producción a servicios externos es un riesgo de negocio real.
+
+**Costo.** Las APIs de LLM y visión ya son el gasto inevitable. Agregar hosting de backend, base de datos cloud, y CDN para una operación individual es overhead sin beneficio.
+
+**Resiliencia.** El sistema debe funcionar sin internet para las operaciones core (búsqueda semántica, browse de biblioteca, clasificación desde cache). Solo los gaps que requieren LLM necesitan conexión.
+
+## Por Qué Modular
+
+El stack de IA evoluciona cada tres meses. Whisper puede reemplazarse por un modelo más rápido. ChromaDB puede reemplazarse por LanceDB. GPT-4o puede reemplazarse por Gemini 2.0. La modularidad garantiza que estos reemplazos sean swaps de adaptadores, no rewrites del sistema.
+
+La regla de arquitectura central es que cada módulo define sus contratos de input/output como Pydantic models, y nunca se comunica con otro módulo directamente — solo a través de esos contratos. Los módulos se orquestan desde la capa de API, no entre sí.
+
+## Por Qué Incremental
+
+El sistema tiene alto riesgo de over-engineering. La tentación de construir el sistema "completo" antes de validar que la búsqueda semántica funciona para el dominio específico de esta biblioteca es el mayor peligro. El roadmap está diseñado para que cada fase produzca valor tangible y verificable antes de construir la siguiente.
+
+La Fase 0 completa (bootstrap de índice) ya produce valor: permite búsqueda semántica desde CLI antes de que exista el dashboard. Ese momento de validación — ver que el sistema encuentra `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` cuando se busca "dolor rodilla escaleras" — es el gate para continuar.
+
+## Cómo Evitar Deuda Técnica
+
+Tres mecanismos concretos:
+
+El archivo `.cursorrules` en la raíz del repositorio define restricciones que Cursor respeta al generar código: qué puede llamar a qué, dónde van los external calls, cómo se manejan los errores. Cursor sin restricciones tiende a romper boundaries de arquitectura.
+
+El módulo `taxonomy/` encapsula toda la lógica de parsing y construcción de filenames. Ningún otro módulo contiene lógica de parsing de filenames. Si la convención de naming cambia, solo `taxonomy/` cambia.
+
+El `ARCHITECTURE.md` es un documento vivo que registra cada decisión arquitectónica no obvia con su justificación. Cuando Cursor sugiere algo que viola una decisión previa, ese documento es la referencia.
+
+---
+
+# 3. High-Level Architecture
+
+## Capas del Sistema
+
+El sistema tiene cinco capas con responsabilidades claramente separadas:
+
+**Processing Layer** transforma inputs crudos en representaciones internas. Es el único lugar donde ocurre procesamiento multimedia: faster-whisper para transcripción, FFmpeg para extracción de frames y metadata, spaCy para NLP básico. Esta capa no hace llamadas a LLM — es determinística y local.
+
+**AI Layer** es donde viven las llamadas externas a APIs de IA. OpenAI embeddings para vectorización, GPT-4o para concepto extraction complejo y generación de prompts, GPT-4o Vision para clasificación de clips. Esta capa está completamente abstraída detrás de interfaces: `LLMService`, `VisionService`, `EmbeddingService`. Cambiar de proveedor es cambiar la implementación de estas interfaces.
+
+**Semantic Layer** es el corazón del sistema: ChromaDB para búsqueda vectorial, el módulo `taxonomy/` para parsing y construcción de filenames, y el `TaxonomyBooster` para reranking por función narrativa y género. Esta capa transforma vectores en recomendaciones semánticamente coherentes.
+
+**Data Layer** es la fuente de verdad persistente: SQLite via SQLAlchemy para toda la metadata relacional (clips, proyectos, escenas, recomendaciones, gaps, prompts), y el filesystem para los assets (clips, thumbnails cacheados, logs estructurados).
+
+**Presentation Layer** es la FastAPI local + el frontend (PyQt6 en MVP, Tauri en Fase 4). La FastAPI expone los cuatro pipelines como endpoints HTTP. El frontend consume esta API y nunca importa módulos de backend directamente — esta separación es lo que permite el swap de frontend en Fase 4 sin tocar el backend.
+
+## Flujo de Datos — Dos Caminos Principales
+
+**Camino 1: Análisis de guion (online, interactivo)**
+
+El usuario sube un MP3 al dashboard. La API recibe el archivo, lo pasa al `ScriptAnalyzer`, que orquesta `Transcriber` → `Segmenter` → `ConceptExtractor`. El resultado es una lista de `Scene` objects. Cada `Scene` pasa al `ClipRecommender`, que consulta ChromaDB y retorna recomendaciones rankeadas. Las escenas con score bajo pasan al `GapHandler`, que llama al `LLMService` para generar keywords y prompts. El dashboard renderiza todo esto con thumbnails cacheados (o los genera si no existen).
+
+**Camino 2: Incorporación de clips nuevos (background, asíncrono)**
+
+El `FilesystemWatcher` detecta archivos en `incoming/`. Los pasa al `ClipOrganizer`, que extrae el frame central con FFmpeg, lo envía al `VisionService` para clasificación taxonómica, genera el nombre de archivo correcto, mueve el clip a la carpeta correcta, inserta en SQLite, y vectoriza en ChromaDB. Todo esto ocurre en un thread de background sin bloquear el UI.
+
+## Boundaries Estrictos
+
+La regla más importante del sistema es que **solo el código en `services/` hace llamadas a APIs externas**. Los módulos en `modules/` y el código en `core/` importan de `services/` pero nunca hacen llamadas HTTP directamente. Esto garantiza que:
+
+- Los tests pueden mockear las APIs externas con un solo punto de intercepción.
+- Los límites de rate y costos son controlables desde un solo lugar.
+- Si OpenAI cae, el sistema puede degradarse gracefully (buscar con embeddings pre-generados, no generar prompts nuevos).
+
+---
+
+# 4. Core Modules Design
+
+## 4.1 Library Engine (`services/library_service.py`)
+
+**Propósito:** CRUD completo sobre la biblioteca de clips. Es el módulo que habla con SQLite para todo lo relacionado con clips. Ningún otro módulo escribe en la tabla `clips` directamente.
+
+**Responsabilidades:**
+- Insertar, actualizar y consultar clips en SQLite.
+- Detectar clips duplicados via SHA256.
+- Calcular el `next_variant_number` para una combinación taxonomía dada.
+- Retornar el árbol de categorías existentes en la biblioteca (usado por M4 para sugerir carpeta destino).
+- Marcar clips como `naming_compliant=False` durante el bootstrap.
+- Actualizar `times_used` y `last_used_at` cuando un clip es seleccionado en un proyecto.
+
+**Inputs:** Pydantic models `ClipCreate`, `ClipUpdate`, `ClipQuery`.
+**Outputs:** Pydantic models `ClipRecord`, `ClipList`, `LibraryStats`.
+
+**Dependencies:** `database/db.py` (SQLAlchemy session), `taxonomy/parser.py` (para normalizar filenames en queries).
+
+**Future scalability:** Si la biblioteca supera 50,000 clips, las queries de SQLite pueden optimizarse con índices adicionales sobre `narrative_function` y `subcategory`. El interface no cambia.
+
+**Possible risks:** Si dos procesos escriben simultáneamente en SQLite (raro en uso single-user pero posible si el watcher y el usuario manual actúan al mismo tiempo), SQLite maneja esto con write locking. El timeout default de SQLite (5 segundos) es suficiente para este caso.
+
+## 4.2 Semantic Search Engine (`modules/clip_recommender.py`)
+
+**Propósito:** Dado un concepto semántico y contexto de escena, retornar los N clips más relevantes de la biblioteca con sus scores finales.
+
+**Responsabilidades:**
+- Recibir un `Scene` object con `concept`, `narrative_function`, `gender_hint`, `is_hook`.
+- Construir la query string enriquecida usando `NARRATIVE_EXPANSIONS` de `taxonomy/constants.py`.
+- Llamar a `EmbeddingService.embed(query)` para obtener el vector.
+- Llamar a `VectorStore.search(vector, n=15)` para obtener candidatos.
+- Aplicar `TaxonomyBooster.boost(candidates, scene)` para reranking.
+- Persistir las recomendaciones en la tabla `recommendations` (para feedback loop futuro).
+- Retornar `List[Recommendation]` con top-5.
+
+**Inputs:** `Scene` (Pydantic model con concept, narrative_function, gender_hint, is_hook, project_id).
+**Outputs:** `List[Recommendation]` (clip_id, clip_path, similarity_score, taxonomy_boost, final_score, rank, thumbnail_path).
+
+**Dependencies:** `core/embedder.py`, `core/vector_store.py`, `services/library_service.py`, `taxonomy/constants.py`.
+
+**Algoritmo de TaxonomyBooster:**
+
+```python
+class TaxonomyBooster:
+    BOOSTS = {
+        "narrative_function_match": 0.20,
+        "gender_match": 0.10,
+        "hook_category_match": 0.25,   # clip.narrative_function == "HOOK" cuando scene.is_hook
+    }
+    PENALTIES = {
+        "already_used_in_project": -0.15,
+        "low_usage_history": 0.0,      # neutral, no penalizar por ser nuevo
+    }
+
+    def boost(self, candidates: List[SearchResult], scene: Scene) -> List[SearchResult]:
+        used_ids = self._get_used_ids(scene.project_id)
+        
+        for c in candidates:
+            delta = 0.0
+            if c.clip.narrative_function == scene.narrative_function:
+                delta += self.BOOSTS["narrative_function_match"]
+            if scene.gender_hint and c.clip.gender == scene.gender_hint:
+                delta += self.BOOSTS["gender_match"]
+            if scene.is_hook and c.clip.narrative_function == "HOOK":
+                delta += self.BOOSTS["hook_category_match"]
+            if c.clip.id in used_ids:
+                delta += self.PENALTIES["already_used_in_project"]
+            c.final_score = min(1.0, max(0.0, c.similarity_score + delta))
+        
+        return sorted(candidates, key=lambda x: x.final_score, reverse=True)
+```
+
+**Future scalability:** En Fase 3, el booster puede incorporar un segundo factor: el historial de aceptación del usuario para cada tipo de clip (`recommendations.accepted`). Los clips que el productor acepta consistentemente en contextos similares reciben un boost adicional aprendido.
+
+**Possible risks:** El reranking por taxonomía puede sobre-boostar un clip de baja similaridad vectorial pero alta coincidencia taxonómica. El cap de `min(1.0, ...)` y la necesidad de al menos score vectorial > 0.40 como threshold mínimo para que un candidato sea elegible mitigan esto.
+
+## 4.3 Embedding Engine (`core/embedder.py`)
+
+**Propósito:** Abstracción sobre el modelo de embeddings. Convierte texto en vectores de alta dimensión. Implementa caché local para evitar re-embeddings.
+
+**Responsabilidades:**
+- Exponer `embed(text: str) -> List[float]`.
+- Exponer `embed_batch(texts: List[str]) -> List[List[float]]` (para bootstrap de biblioteca).
+- Implementar caché LRU en memoria (512 entradas, hit rate esperado ~40% en uso normal dado que las queries de escenas se repiten entre proyectos de mismo producto).
+- Implementar caché persistente en SQLite (`embedding_cache` tabla) para textos de clips — una vez embedido, nunca se re-embedde el mismo texto.
+- Respetar el rate limit de la API de embeddings (3,500 RPM para `text-embedding-3-small`).
+
+**Inputs:** `str` o `List[str]`.
+**Outputs:** `List[float]` (1536 dimensiones) o `List[List[float]]`.
+
+**Implementación del batch para bootstrap:**
+
+```python
+async def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    # Chunk en lotes de 100 (límite seguro para la API)
+    results = []
+    for chunk in self._chunks(texts, size=100):
+        # Check cache primero
+        uncached = [(i, t) for i, t in enumerate(chunk) 
+                    if not self._in_cache(t)]
+        
+        if uncached:
+            indices, texts_to_embed = zip(*uncached)
+            response = await self.client.embeddings.create(
+                model=self.model,
+                input=list(texts_to_embed)
+            )
+            for idx, embedding_obj in zip(indices, response.data):
+                self._cache_set(texts_to_embed[idx], embedding_obj.embedding)
+        
+        results.extend([self._cache_get(t) for t in chunk])
+        await asyncio.sleep(0.1)  # Rate limit safety
+    
+    return results
+```
+
+**Dependencies:** `openai` SDK (o `anthropic` como fallback).
+
+**Future scalability:** Si se quiere migrar a embeddings locales (sentence-transformers), solo esta clase cambia. El interface permanece idéntico.
+
+## 4.4 Script Analyzer (`modules/script_analyzer.py`)
+
+**Propósito:** Orquestador del pipeline MP3 → escenas semánticas. Coordina Transcriber, Segmenter y ConceptExtractor. Retorna un `ProjectAnalysis` completo.
+
+**Responsabilidades:**
+- Recibir ruta de MP3 y metadata del proyecto (nombre, categoría de producto, audiencia).
+- Llamar a `Transcriber.transcribe(mp3_path)` → `Transcript`.
+- Llamar a `Segmenter.segment(transcript)` → `List[Scene]`.
+- Para cada `Scene`, llamar a `ConceptExtractor.extract(scene)` → `scene.concept`.
+- Inferir `narrative_function` para cada escena.
+- Crear el `Project` en SQLite con las escenas.
+- Retornar `ProjectAnalysis`.
+
+**Inputs:** `ScriptAnalyzerRequest` (mp3_path, project_name, product_category, target_gender).
+**Outputs:** `ProjectAnalysis` (project_id, scenes: List[Scene], total_duration_ms, hook_count, total_scenes).
+
+**Dependencies:** `core/transcriber.py`, `core/segmenter.py`, `core/concept_extractor.py`, `services/library_service.py`.
+
+**Possible risks:** El `ConceptExtractor` puede hacer una llamada LLM por escena en el fallback path (cuando spaCy no puede extraer el concepto). Para un guion de 20 escenas, esto son hasta 20 llamadas secuenciales. Mitigación: procesar en paralelo con `asyncio.gather()` con un semáforo de 5 llamadas concurrentes.
+
+## 4.5 MP3 Transcription Pipeline (`core/transcriber.py`)
+
+**Propósito:** Wrapper sobre `faster-whisper`. Convierte audio en transcript estructurado con timestamps por palabra.
+
+**Responsabilidades:**
+- Cargar el modelo faster-whisper una sola vez en memoria (Singleton pattern — costoso inicializar en cada llamada).
+- Transcribir MP3 con `word_timestamps=True`.
+- Retornar `Transcript` con `segments` y `words` con timestamps en milisegundos.
+- Detectar idioma automáticamente si `language=None`.
+- Manejar audios con silencio inicial (ignorar segmentos vacíos).
+
+**Implementación del Singleton:**
+
+```python
+class Transcriber:
+    _instance = None
+    _model = None
+
+    @classmethod
+    def get_instance(cls) -> "Transcriber":
+        if cls._instance is None:
+            cls._instance = cls()
+            cls._model = WhisperModel(
+                model_size_or_path=config.transcription.model,
+                device=config.transcription.device,
+                compute_type="int8"  # Optimizado para CPU
+            )
+        return cls._instance
+
+    def transcribe(self, audio_path: str) -> Transcript:
+        segments, info = self._model.transcribe(
+            audio_path,
+            language=config.transcription.language,
+            word_timestamps=True,
+            vad_filter=True,      # Elimina silencios largos automáticamente
+            vad_parameters={"min_silence_duration_ms": 500}
+        )
+        return self._build_transcript(segments, info)
+```
+
+**Performance estimada:** Modelo `small` en CPU i5 12th Gen con `compute_type="int8"`: ~15–25 segundos para 2 minutos de audio. Modelo `medium` con int8: ~35–50 segundos.
+
+**Dependencies:** `faster-whisper` library.
+
+## 4.6 Scene Segmenter (`core/segmenter.py`)
+
+**Propósito:** Divide el transcript en escenas de ~2.5 segundos respetando boundaries naturales del habla, y detecta hooks.
+
+**Algoritmo de segmentación:**
+
+El algoritmo trabaja a nivel de palabras (no de caracteres ni de frases). Acumula palabras hasta que la ventana temporal supera `target_duration_ms` (2500ms default). Cuando la supera, busca el mejor punto de corte hacia atrás: primero busca el fin de oración más cercano (palabra seguida de pausa > 400ms), luego el fin de cláusula (coma), luego corta en el umbral exacto si no encuentra boundary natural.
+
+**Hook Scoring:**
+
+```python
+HOOK_KEYWORDS = {
+    # Alto impacto emocional
+    "dolor": 0.15, "sufres": 0.15, "sufrir": 0.15, "problema": 0.10,
+    "secreto": 0.20, "nadie": 0.15, "error": 0.15, "peligro": 0.20,
+    # Urgencia / promesa
+    "descubre": 0.15, "solución": 0.10, "funciona": 0.10,
+    # Números / estadísticas  
+    "millones": 0.10, "años": 0.05, "%": 0.10,
+    # Preguntas (detectar por "?" en texto o por tono ascendente futuro)
+    "¿": 0.20, "?": 0.20,
+}
+
+def score_hook(scene: Scene) -> float:
+    text_lower = scene.text.lower()
+    score = 0.0
+    
+    # Bonus por posición (primeros 7 segundos)
+    if scene.start_ms < 7000:
+        score += 0.30 * (1 - scene.start_ms / 7000)
+    
+    # Keywords
+    for keyword, weight in HOOK_KEYWORDS.items():
+        if keyword in text_lower:
+            score += weight
+    
+    return min(1.0, score)
+```
+
+**Narrative Function Inference:**
+
+```python
+def infer_narrative_function(scene: Scene, total_duration_ms: int) -> str:
+    position_ratio = scene.start_ms / total_duration_ms
+    text_lower = scene.text.lower()
+    
+    # Reglas posicionales
+    if position_ratio < 0.15:
+        return "HOOK"
+    if position_ratio > 0.85:
+        return "CTA"
+    
+    # Reglas semánticas (keyword matching)
+    PROBLEM_KEYWORDS = ["dolor", "sufr", "problem", "difícil", "mal", "peor"]
+    BENEFIT_KEYWORDS = ["ahora", "puedes", "normal", "fácil", "cómod"]
+    RESULT_KEYWORDS = ["result", "mejor", "transform", "recuper", "logr"]
+    AUTHORITY_KEYWORDS = ["doctor", "estudio", "científic", "laborator", "comprob"]
+    
+    for kw in PROBLEM_KEYWORDS:
+        if kw in text_lower:
+            return "PROBLEM"
+    for kw in RESULT_KEYWORDS:
+        if kw in text_lower:
+            return "RESULT"
+    for kw in AUTHORITY_KEYWORDS:
+        if kw in text_lower:
+            return "AUTHORITY"
+    for kw in BENEFIT_KEYWORDS:
+        if kw in text_lower:
+            return "BENEFIT"
+    
+    # Fallback por posición
+    if position_ratio < 0.40:
+        return "PROBLEM"
+    if position_ratio < 0.70:
+        return "BENEFIT"
+    return "RESULT"
+```
+
+## 4.7 Concept Extractor (`core/concept_extractor.py`)
+
+**Propósito:** Extraer el concepto visual principal de una escena en inglés (para alignment con el dominio de la biblioteca). Usa spaCy como primera opción (rápido, gratuito) y LLM como fallback.
+
+**Estrategia de dos capas:**
+
+**Capa 1 — spaCy (determinística, sin costo):**
+Carga el modelo `es_core_news_sm`. Extrae noun chunks del texto. Filtra chunks genéricos ("esto", "nosotros", "personas"). Toma el chunk más específico (el más largo con palabras de contenido). Lo traduce al inglés vía un diccionario de términos de dominio (`DOMAIN_TRANSLATION_MAP` en `taxonomy/constants.py`).
+
+```python
+DOMAIN_TRANSLATION_MAP = {
+    "dolor de rodilla": "knee pain",
+    "dolor de espalda": "back pain",
+    "incontinencia urinaria": "urinary incontinence",
+    "caída del cabello": "hair loss",
+    "visión borrosa": "blurry vision",
+    "subir escaleras": "going up stairs",
+    "bajar escaleras": "going down stairs",
+    "pérdida de peso": "weight loss",
+    # ... 200+ términos de dominio
+}
+```
+
+**Capa 2 — LLM fallback (cuando spaCy no encuentra concepto claro):**
+
+```python
+CONCEPT_EXTRACTION_PROMPT = """
+Del siguiente fragmento de guion publicitario de salud/bienestar, 
+extrae el concepto visual principal en INGLÉS en 2-5 palabras.
+El concepto debe ser específico y visual (lo que se vería en un clip de video).
+
+Fragmento: "{text}"
+Función narrativa: {narrative_function}
+
+Responde SOLO con el concepto. Sin explicación. Sin puntos. Sin comillas.
+Ejemplos de buenas respuestas: "knee pain stairs", "woman sleeping badly", 
+"medical animation spine", "before after weight loss", "natural turmeric ingredient"
+"""
+```
+
+**Cache de conceptos:** Los conceptos extraídos se cachean en SQLite por `(text_hash, narrative_function)`. En proyectos de mismo producto, el 70%+ de las escenas tendrán cache hits.
+
+**Dependencies:** `spacy` (modelo `es_core_news_sm`), `services/llm_service.py`.
+
+## 4.8 Gap Handler (`modules/gap_handler.py`)
+
+**Propósito:** Para escenas sin clip adecuado (score < threshold), generar recursos de recuperación: keywords de TikTok y prompts de IA.
+
+**Lógica de clasificación de tipo de gap:**
+
+```python
+def classify_gap_type(scene: Scene) -> GapType:
+    concept_lower = scene.concept.lower()
+    
+    # Animaciones médicas: siempre IA
+    MEDICAL_ANIMATION_INDICATORS = [
+        "animation", "3d", "cell", "neuron", "blood", "organ",
+        "spine", "nerve", "intestine", "brain", "microscopic"
+    ]
+    if any(ind in concept_lower for ind in MEDICAL_ANIMATION_INDICATORS):
+        return GapType.AI_GENERATION
+    
+    # Conceptos altamente específicos o abstractos: ambos
+    if scene.narrative_function == "AUTHORITY":
+        return GapType.BOTH
+    
+    # Default: buscar en TikTok
+    return GapType.TIKTOK_SEARCH
+```
+
+**Generación de keywords TikTok:**
+
+El prompt está diseñado para generar búsquedas reales de TikTok, no descripciones genéricas:
+
+```
+Necesito encontrar clips de video de personas reales en TikTok para un anuncio de 
+{product_category} con este concepto visual: "{concept}"
+
+Público objetivo: {target_audience}
+Función en el anuncio: {narrative_function}
+
+Genera 5 búsquedas específicas de TikTok. Mezcla inglés y español.
+Formato: una búsqueda por línea, 2-4 palabras máximo, como las escribiría alguien en TikTok.
+Solo las búsquedas. Sin numeración. Sin explicación.
+```
+
+**Suggestion de placement en taxonomía:**
+
+Cuando se resuelve un gap (el clip se descarga o genera), el sistema sugiere automáticamente en qué carpeta de la biblioteca debe ir, basándose en la función narrativa y el concepto:
+
+```python
+def suggest_taxonomy_placement(scene: Scene) -> str:
+    gender = scene.gender_hint or "N"
+    function = scene.narrative_function
+    subcategory = scene.concept.upper().replace(" ", "_")
+    return f"{gender}/{function}/{subcategory}/"
+```
+
+## 4.9 Auto Classification Engine (`modules/clip_organizer.py`)
+
+**Propósito:** Procesar clips nuevos en `incoming/`, clasificarlos con visión IA según la taxonomía real de la biblioteca, y organizarlos automáticamente.
+
+**Componentes internos:**
+
+`IncomingWatcher`: subclase de `watchdog.FileSystemEventHandler`. Observa `incoming/` y encola nuevos archivos en una `asyncio.Queue`.
+
+`ClassificationWorker`: coroutine que consume la queue. Para cada archivo: validar → deduplicar → extraer frame → clasificar → proponer al usuario.
+
+`TaxonomyMatcher`: dado el resultado de Vision API, matchea contra las categorías existentes en la biblioteca (leídas desde SQLite) para evitar crear categorías fantasma. Si `suggested_subcategory` no existe en la biblioteca, lo señala como nueva categoría y pide confirmación explícita.
+
+**Prompt de Vision calibrado con taxonomía real:**
+
+El prompt incluye explícitamente las subcategorías existentes en la biblioteca para que el modelo clasifique dentro del espacio conocido, no invente categorías nuevas:
+
+```python
+def build_vision_prompt(existing_subcategories: Dict[str, List[str]]) -> str:
+    subcats_by_function = json.dumps(existing_subcategories, ensure_ascii=False)
+    return f"""
+Clasifica este clip de video para una biblioteca de anuncios de dropshipping.
+
+SUBCATEGORÍAS EXISTENTES EN LA BIBLIOTECA (usa estas si aplican):
+{subcats_by_function}
+
+Si el clip no corresponde a ninguna subcategoría existente, propón una nueva 
+siguiendo la convención MAYUSCULAS_SNAKE_CASE.
+
+Responde SOLO en JSON válido:
+{{
+  "gender": "F|M|N|MIX|KIDS",
+  "narrative_function": "HOOK|PROBLEM|BENEFIT|RESULT|AUTHORITY|SOCIAL_PROOF|NATURAL|CTA",
+  "subcategory": "EXISTING_OR_NEW_SUBCATEGORY",
+  "context": "SPECIFIC_CONTEXT_OR_NULL",
+  "is_ai_generated": false,
+  "is_new_subcategory": false,
+  "suggested_filename": "GENDER_FUNCTION_SUBCATEGORY_CONTEXT_01.mp4",
+  "suggested_folder": "GENDER/FUNCTION/SUBCATEGORY/",
+  "confidence": 0.85,
+  "tags": ["tag1", "tag2"]
+}}
+"""
+```
+
+## 4.10 Filesystem Watcher (`core/filesystem_watcher.py`)
+
+**Propósito:** Observar la carpeta `incoming/` y notificar al sistema cuando aparecen nuevos archivos de video.
+
+**Implementación:**
+
+```python
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent
+import asyncio
+
+class IncomingHandler(FileSystemEventHandler):
+    VALID_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
+    IGNORE_PATTERNS = {"mssdk", ".log", ".txt", ".DS_Store"}
+    
+    def __init__(self, queue: asyncio.Queue):
+        self.queue = queue
+        self.loop = asyncio.get_event_loop()
+    
+    def on_created(self, event: FileCreatedEvent):
+        if event.is_directory:
+            return
+        path = Path(event.src_path)
+        if path.suffix.lower() not in self.VALID_EXTENSIONS:
+            return
+        if any(p in str(path) for p in self.IGNORE_PATTERNS):
+            return
+        # Esperar 2 segundos para que el archivo termine de escribirse
+        asyncio.run_coroutine_threadsafe(
+            self._enqueue_after_delay(path, delay=2.0),
+            self.loop
+        )
+    
+    async def _enqueue_after_delay(self, path: Path, delay: float):
+        await asyncio.sleep(delay)
+        await self.queue.put(path)
+```
+
+**Manejo de archivos parciales:** El delay de 2 segundos después de `on_created` evita procesar archivos que aún se están copiando. Para archivos grandes (> 100MB), agregar verificación adicional de que el tamaño no cambia entre dos checks.
+
+## 4.11 Prompt Intelligence System (`modules/prompt_intelligence.py`)
+
+**Propósito:** Memoria de prompts exitosos. Busca prompts similares antes de generar nuevos. Aprende del rating del usuario.
+
+Ver Sección 9 para el diseño completo.
+
+## 4.12 Metadata Engine (`services/ffmpeg_service.py`)
+
+**Propósito:** Toda la interacción con FFmpeg: extracción de frames, thumbnails, metadata técnica de video.
+
+**Responsabilidades:**
+- `extract_thumbnail(video_path, output_path, position=0.5)` → thumbnail JPEG 160×90px.
+- `get_video_metadata(video_path)` → `VideoMetadata` (duration_ms, width, height, codec, fps, file_size).
+- `extract_frame(video_path, position_seconds, output_path)` → frame PNG en alta resolución para Vision API.
+- `compute_file_hash(file_path)` → SHA256 hex string.
+
+**Estrategia de caching de thumbnails:**
+
+```python
+def get_or_create_thumbnail(self, clip_id: str, video_path: str) -> Path:
+    thumb_path = THUMBNAILS_DIR / f"{clip_id}_thumb.jpg"
+    
+    if thumb_path.exists():
+        return thumb_path
+    
+    # Generar thumbnail
+    subprocess.run([
+        "ffmpeg", "-i", str(video_path),
+        "-ss", "00:00:01",          # 1 segundo de inicio (evita frames negros)
+        "-vframes", "1",
+        "-vf", "scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2",
+        "-q:v", "3",                # Calidad JPEG (1=máx, 5=mín)
+        str(thumb_path),
+        "-y"                        # Sobreescribir si existe
+    ], capture_output=True, check=True)
+    
+    return thumb_path
+```
+
+**GPU acceleration:** La RTX 3050 de 4GB puede acelerar la generación de thumbnails con NVENC/NVDEC. Para el MVP es opcional (los thumbnails se generan en bootstrap, no en tiempo real). En Fase 2, si el bootstrap tarda demasiado, agregar `-hwaccel cuda` al comando FFmpeg.
+
+---
+
+# 5. Semantic Library Architecture
+
+## La Taxonomía Como Schema Semántico
+
+La biblioteca tiene una arquitectura semántica implícita de 5 dimensiones codificada en los nombres de archivo. La tarea del AI-COS es hacer esta arquitectura explícita y consultable.
+
+**Dimensión 1 — Gender/Subject (prefijo de archivo y carpeta raíz):**
+`F` (mujer), `M` (hombre), `N` (neutro/objetos/animaciones), `MIX` (pareja/grupo), `KIDS` (niños).
+Esta dimensión responde a: ¿quién aparece en el clip o qué tipo de objeto se muestra?
+
+**Dimensión 2 — Narrative Function (carpeta de segundo nivel):**
+`HOOK`, `PROBLEM`, `BENEFIT`, `RESULT`, `AUTHORITY`, `SOCIAL_PROOF`, `NATURAL`, `CTA`.
+Esta dimensión responde a: ¿para qué momento del guion sirve este clip?
+
+**Dimensión 3 — Subcategory (carpeta de tercer nivel o parte del filename):**
+El tema específico: `KNEE_PAIN`, `BACK_PAIN`, `URINARY_INCONTINENCE`, `ANIMATION`, `DAILY_ROUTINE`, etc.
+Esta dimensión responde a: ¿qué problema, beneficio o concepto representa este clip?
+
+**Dimensión 4 — Context (parte del filename, opcional):**
+Detalle adicional que califica la subcategoría: `STAIRS`, `POSTURE`, `INFLAMMATION`, `DRIVING`, `IA`, `OLDWOMAN`, `OLDMAN`, `BEFORE_AFTER`.
+Esta dimensión responde a: ¿en qué contexto específico ocurre?
+
+**Dimensión 5 — Variant (número al final):**
+`01`, `02`, `03`... Variantes del mismo concepto.
+Esta dimensión responde a: ¿cuántas opciones tengo de este concepto?
+
+## Semantic Hierarchy
+
+La jerarquía semántica no es lineal — tiene relaciones transversales. Un clip `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` no solo es relevante para "dolor de rodilla en escaleras". También es relevante para "mujer mayor con dificultad para moverse", "dolor articular al subir", "problema de movilidad femenino".
+
+El sistema captura estas relaciones transversales de dos formas:
+
+**Via embeddings:** El texto semántico construido para el clip (`"woman female | problem pain | knee pain articular | stairs climbing steps | ..."`). La similaridad vectorial captura relaciones que la taxonomía estricta no puede expresar.
+
+**Via tags:** La tabla `clips` tiene un campo `tags` (JSON array) con tags semánticos adicionales asignados durante el bootstrap o la clasificación IA. Estos tags son transversales a la taxonomía: un clip puede tener `["dolor_fisico", "movilidad_reducida", "adulto_mayor"]` independientemente de su función narrativa. Los tags se incluyen en el texto semántico para embedding.
+
+## Semantic Text Construction — El Algoritmo Central
+
+La calidad de las recomendaciones depende completamente de la calidad del texto semántico que se vectoriza para cada clip. Este es el componente más crítico del sistema y el que más atención requiere en calibración.
+
+**Paso 1 — Expandir género:**
+```python
+GENDER_EXPANSION = {
+    "F": "woman female adult",
+    "M": "man male adult",
+    "N": "neutral no person object animation scientific",
+    "MIX": "couple mixed group people together",
+    "KIDS": "child kid young boy girl"
+}
+```
+
+**Paso 2 — Expandir función narrativa:**
+```python
+NARRATIVE_EXPANSION = {
+    "HOOK": "hook attention opening shocking reveal problem first seconds teaser grab",
+    "PROBLEM": "problem pain symptom suffering complaint difficulty struggle issue",
+    "BENEFIT": "benefit daily life activity normal routine improvement using product solution",
+    "RESULT": "result recovery improvement transformation success after healing better",
+    "AUTHORITY": "authority credibility medical doctor laboratory science animation proof clinical",
+    "SOCIAL_PROOF": "testimonial review satisfied real person experience social proof selfie",
+    "NATURAL": "natural ingredient herb botanical extract source raw organic plant",
+    "CTA": "buy purchase order now call action limited offer"
+}
+```
+
+**Paso 3 — Expandir subcategoría:**
+Las expansiones de subcategoría son el componente más valioso — incluyen sinónimos médicos, coloquiales y en español:
+
+```python
+SUBCATEGORY_EXPANSION = {
+    "KNEE_PAIN": "knee joint articular cartilage pain ache hurt walk stairs rodilla dolor articulación",
+    "BACK_PAIN": "back spine lumbar pain ache posture herniated disc espalda columna dolor lumbar",
+    "URINARY_INCONTINENCE": "bladder urinary leakage incontinence pelvic floor sneeze laugh jump vejiga",
+    "WEIGHT_PROBLEM": "overweight obesity fat body weight loss diet adelgazar gordura sobrepeso",
+    "SLEEPING_PROBLEM": "insomnia sleep disorder fatigue tired rest insomnio dormir mal cansancio",
+    "EYE_PROBLEM": "vision eye sight blur driving computer screen fatigue ojo visión borrosa",
+    "HAIR_PROBLEM": "hair loss thinning bald scalp irritation cabello caída calvicie pérdida",
+    "BACK_PAIN": "back spine lumbar pain posture herniated disc espalda dolor columna",
+    "STRESS_OVERWHELM": "stress anxiety overwhelm worry mental tired burnout estrés ansiedad",
+    "SKIN_PROBLEM": "skin wrinkles dry aging spots collagen dermis piel arrugas envejecimiento",
+    "DAILY_ROUTINE": "daily life activity routine normal living lifestyle actividad diaria",
+    "ANIMATION": "3d animation medical scientific visualization body organ cellular anatomy",
+    # ... 60+ subcategorías
+}
+```
+
+**Paso 4 — Agregar contexto y variantes significativas:**
+Los contextos como `STAIRS`, `DRIVING`, `OLD_WOMAN`, `BEFORE_AFTER` se expanden con sus sinónimos.
+
+**Texto final para `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4`:**
+```
+woman female adult | problem pain symptom suffering | knee pain articular cartilage joint 
+hurt walk stairs rodilla dolor articulación | stairs going up climbing steps effort | 
+knee pain stairs woman difficulty walking symptom
+```
+
+**Texto final para `N_AUTHORITY_ANIMATION_NEURON_ANIMATION_04.mp4`:**
+```
+neutral no person object animation scientific | authority credibility medical laboratory 
+science animation clinical | animation 3d medical scientific visualization | neuron brain 
+nerve cell neural network | neuron animation 3d medical scientific
+```
+
+## Retrieval Strategy
+
+**Fase 1 — ANN Search:** ChromaDB usa HNSW (Hierarchical Navigable Small World) para approximate nearest neighbor. Parámetros: `ef_construction=200`, `m=16`. Para 10,000 clips, latencia < 10ms.
+
+**Fase 2 — Taxonomy Reranking:** El `TaxonomyBooster` aplica deltas sobre los scores vectoriales. Solo opera sobre los top-15 candidatos del ANN (no sobre toda la biblioteca).
+
+**Fase 3 — Usage Boost (Fase 3 del roadmap):** Un tercer factor basado en `recommendations.accepted` del historial. Clips que el productor acepta consistentemente en contextos similares reciben un boost ligero (+0.05).
+
+**Hybrid Search (futuro):** En Fase 3, agregar un filtro de metadata antes del ANN: si el guion es claramente para un producto de rodilla, pre-filtrar ChromaDB por `narrative_function IN ('HOOK', 'PROBLEM', 'RESULT')` antes de la búsqueda vectorial. ChromaDB soporta filtros de metadata en el query.
+
+---
+
+# 6. Embeddings & Vector Search Design
+
+## Qué Vectorizar
+
+El sistema vectoriza cuatro tipos de contenido con propósitos distintos:
+
+**Clips de la biblioteca:** El texto semántico construido por `taxonomy/text_builder.py`. Son los documentos que se buscan. Colección: `clips_v1` en ChromaDB.
+
+**Queries de búsqueda:** La query enriquecida `{narrative_expansion} {concept}` para cada escena del guion. Son los queries que buscan contra `clips_v1`.
+
+**Prompts generados:** El texto de cada prompt IA generado, para el Prompt Intelligence System. Colección: `prompts_v1` en ChromaDB. Permite búsqueda semántica de prompts similares.
+
+**Scene concepts históricos:** Los conceptos de escenas de proyectos pasados, para poder detectar cuando el productor está trabajando en un producto similar a uno anterior. Colección: `scenes_v1` en ChromaDB.
+
+## ChromaDB — Diseño de Colecciones
+
+```python
+# Inicialización de colecciones
+client = chromadb.PersistentClient(path=str(VECTOR_STORE_PATH))
+
+# Colección principal de clips
+clips_collection = client.get_or_create_collection(
+    name="clips_v1",
+    metadata={
+        "hnsw:space": "cosine",          # Mejor que L2 para text embeddings
+        "hnsw:construction_ef": 200,
+        "hnsw:M": 16
+    },
+    embedding_function=None  # Embeddings pre-computados, no se pasan a ChromaDB para generar
+)
+
+# Colección de prompts para Prompt Intelligence System
+prompts_collection = client.get_or_create_collection(
+    name="prompts_v1",
+    metadata={"hnsw:space": "cosine"}
+)
+```
+
+## Estructura de Documentos en ChromaDB
+
+```python
+# Insertar clip
+clips_collection.add(
+    ids=[clip.id],
+    embeddings=[embedding_vector],   # List[float], 1536 dims
+    documents=[semantic_text],       # El texto original (para debugging)
+    metadatas=[{
+        "gender": clip.gender,
+        "narrative_function": clip.narrative_function,
+        "subcategory": clip.subcategory,
+        "context": clip.context or "",
+        "is_ai_generated": str(clip.is_ai_generated),
+        "times_used": str(clip.times_used),
+        "duration_ms": str(clip.duration_ms),
+    }]
+)
+
+# Query con filtro de metadata
+results = clips_collection.query(
+    query_embeddings=[query_vector],
+    n_results=15,
+    where={  # Opcional: pre-filtrar por metadata
+        "narrative_function": {"$in": ["HOOK", "PROBLEM"]}
+    },
+    include=["metadatas", "distances", "documents"]
+)
+```
+
+## Similarity Metric
+
+Cosine similarity es la métrica correcta para text embeddings. Un score de cosine similarity de 1.0 indica vectores idénticos, 0.0 indica ortogonalidad. ChromaDB retorna distancias (1 - cosine_similarity), por lo que scores bajos = mayor similaridad. El sistema invierte este valor: `similarity_score = 1 - distance`.
+
+**Thresholds observados en pruebas:**
+- `> 0.75`: match excelente, clip casi perfecto para el concepto.
+- `0.65–0.75`: match bueno, clip relevante.
+- `0.50–0.65`: match aceptable, clip relacionado pero no específico.
+- `< 0.50`: match pobre → gap.
+
+El threshold de 0.65 como límite de gap está calibrado para este dominio. Puede necesitar ajuste inicial basado en los primeros proyectos reales.
+
+## Re-indexado Incremental
+
+El sistema nunca re-indexa clips que ya están en ChromaDB (verificado por `clip.embedding_id IS NOT NULL` en SQLite). El re-indexado completo se reserva para cambios en el modelo de embeddings (que invalidan todos los vectores existentes).
+
+Cuando se actualiza `text-embedding-3-small` a una versión nueva (o se migra a otro modelo), el proceso es: crear nueva colección `clips_v2`, re-indexar toda la biblioteca en background, swap atómico de colección activa, eliminar `clips_v1`.
+
+---
+
+# 7. Script-to-Visual Pipeline
+
+## Pipeline Completo
+
+### Etapa 0: Pre-flight Checks
+
+Antes de iniciar el análisis, el sistema verifica:
+- Que el MP3 existe y es legible.
+- Que el modelo de Whisper está cargado (primera vez: 3–8 segundos de carga).
+- Que ChromaDB tiene clips indexados (si no: advertencia "Biblioteca no indexada").
+- Que las APIs están configuradas (OpenAI API key presente).
+
+### Etapa 1: Transcripción
+
+```
+faster-whisper(mp3_path) → {
+  segments: [{start, end, text, words: [{word, start, end, probability}]}]
+  language: "es"
+  language_probability: 0.98
+  duration: 187.3  # segundos
+}
+```
+
+La probabilidad por palabra permite detectar segmentos de baja confianza (probability < 0.7) que pueden necesitar corrección manual. El sistema los marca con `low_confidence=True` en el `Segment`.
+
+### Etapa 2: Segmentación
+
+El segmenter produce una `List[Scene]` donde cada `Scene` tiene una ventana temporal de ~2.5 segundos. El algoritmo garantiza que:
+- Ninguna escena tiene menos de 800ms (demasiado corta para un clip de video).
+- Ninguna escena supera 4,000ms (demasiado larga para el estilo fast-paced).
+- Los silencios > 1,000ms siempre son boundaries de escena.
+
+### Etapa 3: Enriquecimiento Semántico
+
+Para cada `Scene`, en paralelo (hasta 5 concurrent):
+
+```python
+async def enrich_scenes(scenes: List[Scene]) -> List[Scene]:
+    semaphore = asyncio.Semaphore(5)
+    
+    async def enrich_one(scene: Scene) -> Scene:
+        async with semaphore:
+            scene.narrative_function = segmenter.infer_narrative_function(scene, total_duration)
+            scene.hook_score = segmenter.score_hook(scene)
+            scene.is_hook = scene.hook_score > 0.5
+            scene.concept = await concept_extractor.extract(scene)
+            return scene
+    
+    return await asyncio.gather(*[enrich_one(s) for s in scenes])
+```
+
+### Etapa 4: Búsqueda Semántica
+
+Para cada `Scene`, construir la query enriquecida y buscar en ChromaDB:
+
+```python
+def build_search_query(scene: Scene) -> str:
+    parts = []
+    parts.append(NARRATIVE_EXPANSION[scene.narrative_function])
+    parts.append(scene.concept)
+    
+    # Agregar contexto del guion (escenas adyacentes mejoran precisión)
+    if scene.scene_index > 0:
+        prev_concept = scenes[scene.scene_index - 1].concept
+        parts.append(f"context: {prev_concept}")
+    
+    return " | ".join(parts)
+```
+
+### Etapa 5: Detección de Gaps
+
+```python
+def detect_gaps(scenes: List[Scene], recommendations: Dict[str, List[Recommendation]]) -> List[Gap]:
+    gaps = []
+    for scene in scenes:
+        recs = recommendations[scene.id]
+        if not recs or recs[0].final_score < config.search.gap_threshold:
+            gap_type = gap_handler.classify_gap_type(scene)
+            gaps.append(Gap(
+                scene_id=scene.id,
+                concept=scene.concept,
+                narrative_function=scene.narrative_function,
+                gap_type=gap_type,
+                taxonomy_suggestion=suggest_taxonomy_placement(scene)
+            ))
+    return gaps
+```
+
+### Etapa 6: Enriquecimiento de Gaps (async, en background)
+
+La generación de keywords TikTok y prompts IA para todos los gaps se dispara en background después de mostrar el análisis inicial al usuario. El usuario ve las recomendaciones de clips inmediatamente y los gaps se enriquecen progresivamente (la UI se actualiza via WebSocket o polling).
+
+### Etapa 7: Persistencia
+
+```python
+async def persist_project_analysis(analysis: ProjectAnalysis) -> str:
+    async with db.session() as session:
+        # Crear proyecto
+        project = Project(name=analysis.project_name, ...)
+        session.add(project)
+        
+        # Crear escenas
+        for scene in analysis.scenes:
+            db_scene = Scene(project_id=project.id, ...)
+            session.add(db_scene)
+        
+        # Crear recomendaciones
+        for scene_id, recs in analysis.recommendations.items():
+            for rec in recs:
+                session.add(Recommendation(scene_id=scene_id, ...))
+        
+        # Crear gaps
+        for gap in analysis.gaps:
+            session.add(Gap(...))
+        
+        await session.commit()
+    return project.id
+```
+
+## Scene Chunking — Decisiones de Diseño
+
+**¿Por qué 2.5 segundos?** El estilo de edición del productor es fast-paced con cambio de clip aproximadamente cada 2–3 segundos. El segmenter alinea con este ritmo. Un segmento de 2.5 segundos corresponde a exactamente un clip en el timeline final.
+
+**¿Por qué respetar boundaries de oración?** Cortar una oración en medio produce una escena cuyo concepto es ambiguo. "sufren este" no tiene concepto extraíble; "sufren este problema de rodilla" sí. El costo de respetar boundaries es ±300ms por escena — insignificante para la calidad.
+
+**¿Por qué contexto de escenas adyacentes?** El concepto de una escena a veces es pronombre ("este problema") o anafórico ("la solución"). Sin contexto, el extractor no puede resolver qué es "este" o "la solución". Las dos escenas anteriores proveen el antecedente.
+
+---
+
+# 8. AI Classification System
+
+## Pipeline de Clasificación de Clip Nuevo
+
+### Paso 1: Detección y Validación
+
+```python
+class ClipValidator:
+    VALID_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
+    MIN_DURATION_MS = 1000    # 1 segundo mínimo
+    MAX_FILE_SIZE_MB = 500    # 500MB máximo
+    
+    def validate(self, path: Path) -> ValidationResult:
+        if path.suffix.lower() not in self.VALID_EXTENSIONS:
+            return ValidationResult(valid=False, reason="invalid_extension")
+        
+        metadata = ffmpeg_service.get_video_metadata(path)
+        if metadata.duration_ms < self.MIN_DURATION_MS:
+            return ValidationResult(valid=False, reason="too_short")
+        
+        file_hash = ffmpeg_service.compute_file_hash(path)
+        if library_service.exists_by_hash(file_hash):
+            return ValidationResult(valid=False, reason="duplicate", 
+                                  existing_clip_id=library_service.get_by_hash(file_hash).id)
+        
+        return ValidationResult(valid=True, file_hash=file_hash, metadata=metadata)
+```
+
+### Paso 2: Extracción de Frame para Vision
+
+El frame para enviar a la Vision API se extrae a 1 segundo del inicio (evita frames negros o de transición que son comunes en los primeros frames). Para clips de animación (detectados por baja motion entre frames, calculado con FFmpeg scene detection), se usa el frame del 30% de la duración donde el contenido ya está estabilizado.
+
+```python
+def extract_frame_for_vision(video_path: Path, metadata: VideoMetadata) -> Path:
+    # Para clips cortos (<5s), usar frame central
+    if metadata.duration_ms < 5000:
+        position = metadata.duration_ms / 2000  # segundos
+    else:
+        position = 1.0  # 1 segundo del inicio
+    
+    frame_path = TEMP_DIR / f"{uuid4()}_frame.jpg"
+    ffmpeg_service.extract_frame(video_path, position, frame_path, 
+                                  width=640, height=360)  # Suficiente para Vision
+    return frame_path
+```
+
+### Paso 3: Clasificación con Vision API
+
+La llamada a Vision API incluye el frame en base64 + el prompt de clasificación con la taxonomía real de la biblioteca. El payload tiene un sistema de fallback: si el frame principal no es representativo, se envían tres frames (0.25s, 0.5s, 0.75s del clip) y el modelo clasifica basándose en los tres.
+
+```python
+async def classify_clip(frame_path: Path) -> ClassificationResult:
+    with open(frame_path, "rb") as f:
+        frame_b64 = base64.b64encode(f.read()).decode()
+    
+    existing_subcategories = library_service.get_taxonomy_tree()
+    
+    response = await vision_service.analyze(
+        image_b64=frame_b64,
+        prompt=build_vision_prompt(existing_subcategories),
+        model="gpt-4o",
+        max_tokens=500
+    )
+    
+    return ClassificationResult(**json.loads(response.content))
+```
+
+### Paso 4: Matching con Taxonomía Existente
+
+```python
+def match_to_existing_taxonomy(classification: ClassificationResult) -> TaxonomyMatch:
+    # Fuzzy match de subcategoría contra las existentes
+    existing = library_service.get_subcategories_for_function(
+        classification.narrative_function
+    )
+    
+    best_match = process.extractOne(
+        classification.subcategory, 
+        existing,
+        score_cutoff=80  # 80% similarity mínimo para match
+    )
+    
+    if best_match:
+        return TaxonomyMatch(
+            matched_subcategory=best_match[0],
+            is_new=False,
+            confidence=best_match[1] / 100
+        )
+    else:
+        return TaxonomyMatch(
+            matched_subcategory=classification.subcategory,
+            is_new=True,
+            confidence=classification.confidence
+        )
+```
+
+La librería `rapidfuzz` provee el fuzzy matching para evitar crear subcategorías casi-duplicadas (`KNEE_PAIN` vs `KNEE_PIAN` vs `KNEE_ACHE`).
+
+### Paso 5: Generación de Filename
+
+```python
+def generate_filename(
+    classification: ClassificationResult,
+    match: TaxonomyMatch,
+    library_service: LibraryService
+) -> str:
+    subcategory = match.matched_subcategory
+    next_variant = library_service.get_next_variant_number(
+        gender=classification.gender,
+        narrative_function=classification.narrative_function,
+        subcategory=subcategory,
+        context=classification.context
+    )
+    
+    parts = [classification.gender, classification.narrative_function, subcategory]
+    if classification.context:
+        parts.append(classification.context)
+    if classification.is_ai_generated:
+        parts.append("IA")
+    parts.append(f"{next_variant:02d}")
+    
+    return "_".join(parts) + ".mp4"
+```
+
+### Paso 6: Propuesta al Usuario
+
+En modo default (`auto_classify=false`), el sistema presenta al usuario:
+- Thumbnail del clip.
+- Clasificación propuesta (gender, function, subcategory, context).
+- Nombre de archivo generado.
+- Carpeta destino.
+- Score de confianza.
+- Indicador de si es subcategoría nueva.
+
+El usuario puede: confirmar, editar cualquier campo, o rechazar (el clip va a `needs_review/`).
+
+### Paso 7: Ejecución y Indexado
+
+```python
+async def execute_classification(
+    source_path: Path,
+    proposed: ClassificationProposal,
+    confirmed: ClassificationConfirmation  # puede tener ediciones del usuario
+) -> Clip:
+    
+    # Mover archivo
+    target_dir = LIBRARY_ROOT / confirmed.folder
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / confirmed.filename
+    shutil.move(str(source_path), str(target_path))
+    
+    # Crear registro en SQLite
+    clip = await library_service.create_clip(
+        ClipCreate(
+            filename=confirmed.filename,
+            absolute_path=str(target_path),
+            gender=confirmed.gender,
+            narrative_function=confirmed.narrative_function,
+            subcategory=confirmed.subcategory,
+            context=confirmed.context,
+            is_ai_generated=confirmed.is_ai_generated,
+            file_hash=proposed.file_hash,
+            duration_ms=proposed.metadata.duration_ms,
+            # ...
+        )
+    )
+    
+    # Generar thumbnail
+    await ffmpeg_service.get_or_create_thumbnail(clip.id, target_path)
+    
+    # Vectorizar e indexar
+    semantic_text = text_builder.build(clip)
+    embedding = await embedder.embed(semantic_text)
+    vector_store.insert(clip.id, embedding, semantic_text, clip.dict())
+    
+    # Actualizar clip con embedding_id
+    await library_service.update_clip(clip.id, ClipUpdate(embedding_id=clip.id, indexed_at=now()))
+    
+    return clip
+```
+
+---
+
+# 9. Prompt Intelligence Architecture
+
+## Diseño Conceptual
+
+El Prompt Intelligence System (PIS) es una memoria de prompts exitosos que mejora la calidad de los prompts generados con el tiempo. Tiene tres operaciones fundamentales: **recordar** (guardar prompts generados), **recuperar** (encontrar prompts similares a uno nuevo), y **refinar** (mejorar prompts usando los mejores como contexto).
+
+## Componentes
+
+**PromptStore:** Wrapper sobre la tabla `prompts` en SQLite + colección `prompts_v1` en ChromaDB. Inserta, recupera y actualiza prompts.
+
+**PromptScorer:** Actualiza el `user_rating` y el flag `is_golden` cuando el usuario evalúa un prompt. Un prompt es `is_golden` cuando `user_rating >= 4`.
+
+**PromptRetriever:** Busca golden prompts similares al concepto actual antes de llamar al LLM. Usa ChromaDB para búsqueda semántica sobre `prompts_v1`.
+
+**PromptGenerator:** Genera prompts nuevos usando el LLM, con contexto de golden prompts similares para calibrar el estilo.
+
+## Flujo de Generación con Memoria
+
+```python
+class PromptIntelligence:
+    
+    async def get_image_prompt(
+        self, 
+        concept: str, 
+        narrative_function: str,
+        product_category: str
+    ) -> PromptResult:
+        
+        # 1. Buscar golden prompts similares en ChromaDB
+        query_embedding = await embedder.embed(f"{concept} {narrative_function}")
+        similar_prompts = await prompt_store.search_golden(
+            embedding=query_embedding,
+            prompt_type="image",
+            n=3,
+            min_similarity=0.70
+        )
+        
+        # 2. Si hay match muy alto, adaptar el golden prompt (más barato que generar nuevo)
+        if similar_prompts and similar_prompts[0].similarity > 0.88:
+            adapted = await llm_service.adapt_prompt(
+                base_prompt=similar_prompts[0].text,
+                new_concept=concept,
+                system=ADAPT_PROMPT_SYSTEM
+            )
+            return PromptResult(text=adapted, source="adapted", base_prompt_id=similar_prompts[0].id)
+        
+        # 3. Generar nuevo prompt con contexto de golden prompts
+        style_context = self._build_style_context(similar_prompts)
+        new_prompt = await llm_service.generate(
+            system=IMAGE_PROMPT_SYSTEM,
+            user=IMAGE_PROMPT_USER.format(
+                concept=concept,
+                narrative_function=narrative_function,
+                product_category=product_category,
+                style_examples=style_context
+            )
+        )
+        
+        # 4. Guardar el nuevo prompt (sin rating aún)
+        prompt_record = await prompt_store.save(
+            text=new_prompt,
+            concept=concept,
+            prompt_type="image",
+            embedding=query_embedding,
+            source="generated"
+        )
+        
+        return PromptResult(text=new_prompt, source="generated", prompt_id=prompt_record.id)
+    
+    def _build_style_context(self, prompts: List[PromptRecord]) -> str:
+        if not prompts:
+            return "No hay ejemplos previos. Usa estilo orgánico, realista, no invasivo."
+        return "\n---\n".join([
+            f"[Rating: {p.user_rating}/5] {p.text}" 
+            for p in prompts
+        ])
+```
+
+## Prompt Versioning
+
+Cada prompt generado se guarda con `created_at` y una referencia al `project_id` donde fue usado. Esto permite navegar el historial de prompts por producto o por período. No hay versioning explícito de templates de prompt — los templates viven en archivos `.txt` en `aicos/prompts/` y se versionan con Git.
+
+## Categorización Automática de Prompts
+
+Al guardar un nuevo prompt, el sistema extrae automáticamente categorías para facilitar la búsqueda futura:
+
+```python
+def auto_categorize_prompt(concept: str, narrative_function: str) -> Dict:
+    # Detectar tipo de contenido
+    ANIMATION_KEYWORDS = ["animation", "3d", "cell", "organ", "neuron"]
+    LIFESTYLE_KEYWORDS = ["woman", "man", "daily", "routine", "walking"]
+    NATURE_KEYWORDS = ["ingredient", "plant", "extract", "natural"]
+    
+    content_type = "lifestyle"  # default
+    for kw in ANIMATION_KEYWORDS:
+        if kw in concept.lower():
+            content_type = "animation"
+            break
+    for kw in NATURE_KEYWORDS:
+        if kw in concept.lower():
+            content_type = "nature"
+            break
+    
+    return {
+        "content_type": content_type,
+        "narrative_function": narrative_function,
+        "auto_tags": extract_tags(concept)
+    }
+```
+
+---
+
+# 10. Storage Architecture
+
+## Filesystem Layout
+
+```
+~/.aicos/                          # Directorio de aplicación (usuario)
+├── aicos.db                       # SQLite — fuente de verdad
+├── vector_store/                  # ChromaDB persistence
+│   ├── clips_v1/
+│   ├── prompts_v1/
+│   └── scenes_v1/
+├── thumbnails/                    # Cache de thumbnails (JPEG, 160x90)
+│   ├── {clip_id}_thumb.jpg
+│   └── ...
+├── logs/                          # Logs estructurados (JSON)
+│   ├── aicos_2025-05-01.jsonl
+│   └── ...
+├── temp/                          # Archivos temporales (limpiar en startup)
+│   ├── {uuid}_frame.jpg           # Frames extraídos para Vision API
+│   └── ...
+├── exports/                       # Outputs de análisis de proyectos
+│   ├── {project_id}_analysis.json
+│   └── ...
+└── config.yaml                    # Configuración del usuario
+
+E:/                                # Biblioteca de clips (existente)
+├── F/
+├── M/
+├── N/
+├── MIX/
+├── KIDS/
+├── PRODUCTS/
+├── SE/
+└── incoming/                      # Carpeta watched para clips nuevos
+    └── needs_review/              # Clips con baja confianza de clasificación
+```
+
+## Qué Va Dónde — Reglas Claras
+
+**En SQLite:** Todo lo relacional, consultable, y que necesita joins o filtros: clips (metadata completa), proyectos, escenas, recomendaciones, gaps, prompts, sound effects, embedding cache index, jobs de background. SQLite es la fuente de verdad. Si ChromaDB se corrompe, se puede reconstruir desde SQLite.
+
+**En ChromaDB:** Solo vectores y los documentos de texto que los generaron. No metadata completa — solo lo necesario para filtros básicos (gender, narrative_function, is_ai_generated). Los metadatos completos siempre se leen de SQLite usando el `clip_id` retornado por ChromaDB.
+
+**En Filesystem:** Assets binarios que no tienen sentido guardar en DB: clips de video (en la biblioteca), thumbnails (en cache), frames temporales (en temp/), logs (en logs/). Los logs son el único dato que se escribe directamente en filesystem sin pasar por SQLite.
+
+**En Memoria:** Cache LRU de embeddings (512 entradas, ~3MB), modelo de Whisper cargado (el modelo `small` ocupa ~480MB en memoria), modelo spaCy (el modelo `es_core_news_sm` ocupa ~12MB).
+
+## Cache Strategy
+
+**Thumbnails:** Permanentes. Generados una vez en bootstrap, se usan indefinidamente. Si el clip se mueve de carpeta, el thumbnail se mantiene (el `clip_id` no cambia). Si el clip se elimina, el thumbnail se elimina con él (cleanup job).
+
+**Embeddings:** Permanentes para clips (se re-generan solo si cambia el modelo). Temporales para queries de búsqueda (cache LRU en memoria, ~512 entradas, TTL de 1 hora).
+
+**Transcripciones:** Persistidas en filesystem como archivos `.json` en `exports/`. Si el usuario analiza el mismo MP3 dos veces, el sistema detecta el hash del archivo y reutiliza la transcripción.
+
+**LLM Responses:** No se cachean por defecto (los conceptos extraídos sí se cachean en SQLite, pero la respuesta raw del LLM no). Razón: el costo es bajo y cachear respuestas LLM complica el sistema sin beneficio proporcional.
+
+## Temp Files Management
+
+Los frames extraídos para Vision API se guardan en `~/.aicos/temp/` y se eliminan inmediatamente después de usarlos (en el mismo flujo, no en un cleanup job). Si el proceso falla antes de eliminarlos, un cleanup job al startup elimina todos los archivos en `temp/` con más de 24 horas de antigüedad.
+
+---
+
+# 11. Database Design
+
+## Schema Completo
+
+```sql
+-- ============================================================
+-- CLIPS — Asset principal de la biblioteca
+-- ============================================================
+CREATE TABLE clips (
+    id              TEXT PRIMARY KEY,       -- UUID v4
+    filename        TEXT NOT NULL,
+    relative_path   TEXT NOT NULL UNIQUE,   -- Relativa a library_root
+    absolute_path   TEXT NOT NULL,
+    
+    -- Taxonomía 5D
+    gender              TEXT CHECK(gender IN ('F','M','N','MIX','KIDS')),
+    narrative_function  TEXT CHECK(narrative_function IN (
+                            'HOOK','PROBLEM','BENEFIT','RESULT',
+                            'AUTHORITY','SOCIAL_PROOF','NATURAL','CTA')),
+    subcategory         TEXT,
+    context             TEXT,
+    variant_number      INTEGER,
+    is_ai_generated     INTEGER DEFAULT 0,  -- Boolean (0/1)
+    
+    -- Metadata técnica
+    duration_ms         INTEGER,
+    resolution_width    INTEGER,
+    resolution_height   INTEGER,
+    file_size_bytes     INTEGER,
+    fps                 REAL,
+    codec               TEXT,
+    file_hash           TEXT UNIQUE,        -- SHA256
+    
+    -- Semantic index
+    embedding_id        TEXT,               -- ID en ChromaDB (= clip.id)
+    semantic_text       TEXT,               -- Texto usado para embedding
+    tags                TEXT DEFAULT '[]',  -- JSON array de strings
+    
+    -- Estado
+    naming_compliant        INTEGER DEFAULT 0,
+    taxonomy_auto_classified INTEGER DEFAULT 0,
+    taxonomy_manually_verified INTEGER DEFAULT 0,
+    needs_reclassification  INTEGER DEFAULT 0,
+    
+    -- Uso
+    times_used      INTEGER DEFAULT 0,
+    last_used_at    TEXT,                   -- ISO 8601
+    
+    -- Timestamps
+    created_at      TEXT DEFAULT (datetime('now')),
+    indexed_at      TEXT
+);
+
+CREATE INDEX idx_clips_gender ON clips(gender);
+CREATE INDEX idx_clips_function ON clips(narrative_function);
+CREATE INDEX idx_clips_subcategory ON clips(subcategory);
+CREATE INDEX idx_clips_gender_function ON clips(gender, narrative_function);
+CREATE INDEX idx_clips_subcategory_function ON clips(subcategory, narrative_function);
+CREATE INDEX idx_clips_hash ON clips(file_hash);
+CREATE INDEX idx_clips_times_used ON clips(times_used DESC);
+
+-- ============================================================
+-- SOUND_EFFECTS — Assets de audio (carpeta SE/)
+-- ============================================================
+CREATE TABLE sound_effects (
+    id          TEXT PRIMARY KEY,
+    filename    TEXT NOT NULL,
+    absolute_path TEXT NOT NULL,
+    gender      TEXT,
+    emotion     TEXT,
+    duration_ms INTEGER,
+    file_hash   TEXT UNIQUE
+);
+
+-- ============================================================
+-- PROJECTS — Creativos en producción
+-- ============================================================
+CREATE TABLE projects (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    product_name    TEXT,
+    product_category TEXT,
+    target_gender   TEXT,
+    audio_file_path TEXT,
+    audio_file_hash TEXT,
+    transcript_json TEXT,               -- JSON del transcript completo
+    status          TEXT DEFAULT 'draft' CHECK(status IN ('draft','in_progress','completed')),
+    notes           TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    completed_at    TEXT
+);
+
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_created ON projects(created_at DESC);
+
+-- ============================================================
+-- SCENES — Segmentos del guion de cada proyecto
+-- ============================================================
+CREATE TABLE scenes (
+    id                  TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    scene_index         INTEGER NOT NULL,
+    start_ms            INTEGER,
+    end_ms              INTEGER,
+    duration_ms         INTEGER,
+    text                TEXT,
+    concept             TEXT,
+    concept_extraction_method TEXT CHECK(method IN ('spacy','llm','manual')),
+    narrative_function  TEXT,
+    is_hook             INTEGER DEFAULT 0,
+    hook_score          REAL DEFAULT 0.0,
+    gender_hint         TEXT,
+    selected_clip_id    TEXT REFERENCES clips(id),
+    gap_detected        INTEGER DEFAULT 0,
+    low_confidence_transcript INTEGER DEFAULT 0,
+    created_at          TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_scenes_project ON scenes(project_id);
+CREATE INDEX idx_scenes_function ON scenes(narrative_function);
+CREATE INDEX idx_scenes_hook ON scenes(is_hook);
+
+-- ============================================================
+-- RECOMMENDATIONS — Clips sugeridos por escena
+-- ============================================================
+CREATE TABLE recommendations (
+    id                  TEXT PRIMARY KEY,
+    scene_id            TEXT NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    clip_id             TEXT NOT NULL REFERENCES clips(id),
+    similarity_score    REAL NOT NULL,
+    taxonomy_boost      REAL DEFAULT 0.0,
+    final_score         REAL NOT NULL,
+    rank                INTEGER NOT NULL,
+    accepted            INTEGER,        -- NULL=sin decisión, 1=aceptado, 0=rechazado
+    shown_at            TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_recs_scene ON recommendations(scene_id);
+CREATE INDEX idx_recs_clip ON recommendations(clip_id);
+CREATE INDEX idx_recs_accepted ON recommendations(accepted) WHERE accepted IS NOT NULL;
+
+-- ============================================================
+-- GAPS — Escenas sin clip adecuado
+-- ============================================================
+CREATE TABLE gaps (
+    id                  TEXT PRIMARY KEY,
+    scene_id            TEXT NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    concept             TEXT,
+    narrative_function  TEXT,
+    gap_type            TEXT CHECK(gap_type IN ('tiktok_search','ai_generation','both')),
+    tiktok_keywords     TEXT DEFAULT '[]',  -- JSON array
+    ai_image_prompt     TEXT,
+    ai_motion_prompt    TEXT,
+    taxonomy_suggestion TEXT,
+    resolution_type     TEXT CHECK(resolution_type IN ('tiktok_download','ai_generated','manual','skipped')),
+    resolved_at         TEXT,
+    resolved_clip_id    TEXT REFERENCES clips(id),
+    created_at          TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_gaps_scene ON gaps(scene_id);
+CREATE INDEX idx_gaps_resolved ON gaps(resolution_type) WHERE resolution_type IS NOT NULL;
+
+-- ============================================================
+-- PROMPTS — Memoria del Prompt Intelligence System
+-- ============================================================
+CREATE TABLE prompts (
+    id              TEXT PRIMARY KEY,
+    scene_concept   TEXT NOT NULL,
+    prompt_type     TEXT NOT NULL CHECK(prompt_type IN ('image','motion')),
+    model_used      TEXT,
+    prompt_text     TEXT NOT NULL,
+    user_rating     INTEGER CHECK(user_rating BETWEEN 1 AND 5),
+    is_golden       INTEGER DEFAULT 0,
+    content_type    TEXT,               -- animation | lifestyle | nature | etc.
+    auto_tags       TEXT DEFAULT '[]',  -- JSON array
+    source          TEXT CHECK(source IN ('generated','adapted')),
+    base_prompt_id  TEXT REFERENCES prompts(id),
+    used_in_project_id TEXT REFERENCES projects(id),
+    embedding_id    TEXT,               -- ID en ChromaDB prompts_v1
+    notes           TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_prompts_type ON prompts(prompt_type);
+CREATE INDEX idx_prompts_golden ON prompts(is_golden) WHERE is_golden = 1;
+CREATE INDEX idx_prompts_rating ON prompts(user_rating DESC) WHERE user_rating IS NOT NULL;
+
+-- ============================================================
+-- HOOKS_LIBRARY — Biblioteca de hooks efectivos
+-- ============================================================
+CREATE TABLE hooks_library (
+    id              TEXT PRIMARY KEY,
+    text            TEXT NOT NULL,
+    type            TEXT CHECK(type IN ('question','pain','surprise','statement','social_proof')),
+    product_category TEXT,
+    clip_id         TEXT REFERENCES clips(id),  -- Clip que acompaña al hook
+    performance_score REAL,                      -- 1.0-10.0, manual
+    times_used      INTEGER DEFAULT 0,
+    notes           TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================
+-- BACKGROUND_JOBS — Queue de tareas asíncronas
+-- ============================================================
+CREATE TABLE background_jobs (
+    id          TEXT PRIMARY KEY,
+    job_type    TEXT NOT NULL CHECK(job_type IN (
+                    'index_clip','generate_thumbnail','classify_clip',
+                    'enrich_gap','reindex_library')),
+    status      TEXT DEFAULT 'pending' CHECK(status IN ('pending','running','completed','failed')),
+    payload     TEXT,           -- JSON con parámetros del job
+    attempts    INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    error_msg   TEXT,
+    created_at  TEXT DEFAULT (datetime('now')),
+    started_at  TEXT,
+    completed_at TEXT
+);
+
+CREATE INDEX idx_jobs_status ON background_jobs(status);
+CREATE INDEX idx_jobs_type_status ON background_jobs(job_type, status);
+
+-- ============================================================
+-- EMBEDDING_CACHE — Cache de embeddings ya generados
+-- ============================================================
+CREATE TABLE embedding_cache (
+    text_hash   TEXT PRIMARY KEY,   -- SHA256 del texto
+    text        TEXT NOT NULL,
+    embedding   BLOB NOT NULL,      -- Float array serializado como bytes
+    model       TEXT NOT NULL,      -- text-embedding-3-small
+    created_at  TEXT DEFAULT (datetime('now'))
+);
+```
+
+## Índices y Performance
+
+Los índices más críticos para el sistema son los compuestos `(gender, narrative_function)` y `(subcategory, narrative_function)` — usados en el `TaxonomyMatcher` del Auto Organizer y en queries de estadísticas de biblioteca. El índice sobre `file_hash` es crítico para la deduplicación en M4.
+
+Para la tabla `recommendations`, el índice parcial sobre `accepted IS NOT NULL` optimiza las queries de feedback loop (Fase 3) que solo leen recomendaciones con decisión del usuario.
+
+---
+
+# 12. Multimedia Processing Pipeline
+
+## FFmpeg — Comandos Críticos
+
+**Extracción de thumbnail para UI (160×90):**
+```bash
+ffmpeg -i {input} \
+       -ss 00:00:01 \
+       -vframes 1 \
+       -vf "scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2:color=black" \
+       -q:v 3 \
+       {output_thumb}.jpg \
+       -y
+```
+
+**Extracción de frame para Vision API (640×360, alta calidad):**
+```bash
+ffmpeg -i {input} \
+       -ss {position_seconds} \
+       -vframes 1 \
+       -vf "scale=640:360:force_original_aspect_ratio=decrease" \
+       -q:v 1 \
+       {output_frame}.jpg \
+       -y
+```
+
+**Extracción de metadata:**
+```bash
+ffprobe -v quiet \
+        -print_format json \
+        -show_streams \
+        -show_format \
+        {input}
+```
+
+**Cálculo de SHA256 sin cargar archivo completo en memoria (streaming):**
+```python
+def compute_file_hash(file_path: Path) -> str:
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(65536):  # 64KB chunks
+            sha256.update(chunk)
+    return sha256.hexdigest()
+```
+
+## GPU Acceleration con RTX 3050
+
+La GPU disponible (RTX 3050 Laptop 4GB VRAM) puede acelerar dos operaciones:
+
+**Transcripción con faster-whisper:** Cambiar `device="cpu"` a `device="cuda"` y `compute_type="float16"`. Speedup esperado: 3–5x. El modelo `small` requiere ~1.5GB VRAM; la RTX 3050 de 4GB puede manejarlo. **Recomendación:** Mantener CPU en MVP para simplicity; añadir opción CUDA en Fase 2 como setting configurable.
+
+**Generación de thumbnails con NVENC:** Agregar `-hwaccel cuda -hwaccel_output_format cuda` al comando FFmpeg. Speedup en bootstrap: ~2x para throughput de thumbnails. Solo relevante para el bootstrap inicial de 1,247 clips.
+
+## Bootstrap Performance
+
+Para la biblioteca de 1,247 clips, el tiempo estimado de bootstrap en la configuración de hardware actual (CPU):
+
+| Operación | Tiempo por clip | Total (1,247 clips) |
+|---|---|---|
+| Metadata extraction (ffprobe) | ~0.3s | ~6 min |
+| Thumbnail generation (FFmpeg) | ~0.5s | ~10 min |
+| SHA256 computation | ~0.1s | ~2 min |
+| Taxonomy parsing | ~0.001s | < 1s |
+| Embedding generation (API) | ~0.05s (batch) | ~3 min |
+| ChromaDB insertion | ~0.01s | < 1 min |
+| **Total estimado** | | **~22 min** |
+
+Con paralelización (10 workers para thumbnail + metadata, batch de 100 para embeddings), se reduce a ~8–12 minutos.
+
+## Caching de Operaciones Costosas
+
+Las operaciones de FFmpeg son el principal cuello de bottleneck en uso cotidiano. El caching de thumbnails garantiza que cada clip solo se procesa una vez. El cache se invalida solo si el archivo de video cambia (detectado por file_hash).
+
+---
+
+# 13. AI Integration Layer
+
+## Provider Abstraction
+
+Todos los external AI calls pasan por tres interfaces abstractas en `services/`:
+
+```python
+# services/llm_service.py
+class LLMService(Protocol):
+    async def complete(self, system: str, user: str, max_tokens: int) -> str: ...
+    async def complete_json(self, system: str, user: str, schema: Type[BaseModel]) -> BaseModel: ...
+
+# services/embedding_service.py  
+class EmbeddingService(Protocol):
+    async def embed(self, text: str) -> List[float]: ...
+    async def embed_batch(self, texts: List[str]) -> List[List[float]]: ...
+
+# services/vision_service.py
+class VisionService(Protocol):
+    async def analyze(self, image_b64: str, prompt: str) -> str: ...
+```
+
+Las implementaciones concretas (`OpenAILLMService`, `AnthropicLLMService`, `OpenAIEmbeddingService`, `OpenAIVisionService`) se inyectan vía el container de dependencias de FastAPI.
+
+## Retry Strategy
+
+```python
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
+    before_sleep=lambda retry_state: logger.warning(
+        f"API retry {retry_state.attempt_number}/3: {retry_state.outcome.exception()}"
+    )
+)
+async def _call_with_retry(self, *args, **kwargs):
+    return await self._raw_call(*args, **kwargs)
+```
+
+La librería `tenacity` maneja los retries con exponential backoff. El sistema reintenta en `RateLimitError` y `APIConnectionError` pero no en `AuthenticationError` o errores de contenido.
+
+## Rate Limiting Local
+
+Para el bootstrap de la biblioteca (1,247 clips → 1,247 embeddings), el sistema respeta el rate limit de OpenAI de 3,500 RPM para `text-embedding-3-small`. Con lotes de 100, el sistema necesita ~13 requests en total. No hay problema de rate limiting en este caso.
+
+Para las llamadas de Vision API (una por clip nuevo, que ocurren de forma espaciada), tampoco hay problema de rate limiting con el volumen esperado.
+
+El rate limiting se vuelve relevante en Fase 3 cuando se agregue feedback loop que puede disparar múltiples llamadas de LLM en paralelo. El semáforo de `asyncio.Semaphore(5)` en el `ConceptExtractor` es la primera línea de defensa.
+
+## Response Caching
+
+El sistema cachea las respuestas de LLM para concepto extraction en SQLite (`embedding_cache` tabla, usando hash del texto como key). Esto evita pagar por el mismo concepto extraído en proyectos de mismo producto.
+
+Las respuestas de Vision API se cachean por `file_hash` del clip: si un clip ya fue clasificado, la clasificación está en SQLite y no se llama a Vision de nuevo.
+
+## Graceful Degradation
+
+Si la API de OpenAI no está disponible:
+- **Embeddings:** El sistema puede buscar usando solo la taxonomía (sin vectores). Degrada a búsqueda por `narrative_function` + `subcategory` matching string. Peor calidad, pero funcional.
+- **LLM:** El concepto extraction falla al LLM layer y vuelve solo a spaCy. Los gaps no generan keywords ni prompts automáticamente (el usuario los llena manualmente).
+- **Vision:** M4 no puede clasificar automáticamente. El clip se envía directamente a `needs_review/` con una notificación al usuario.
+
+---
+
+# 14. Desktop App Architecture
+
+## Decisión: PyQt6 en MVP, Tauri en Fase 4
+
+**Evaluación de opciones:**
+
+**Electron:** Empaqueta Chromium completo (~150MB overhead). Para una app que ya tiene un backend Python, Electron agrega Chromium + Node.js + Python = tres runtimes. Demasiado pesado. El único argumento a favor es la familiaridad con web technologies.
+
+**Tauri:** Usa el WebView nativo del OS (Edge en Windows). Produce ejecutables de ~10–15MB vs ~150MB de Electron. El backend puede ser Rust (nativo) o HTTP (nuestra FastAPI). Para este proyecto, Tauri actúa como "Chromium sin el peso" — la UI es HTML/CSS/JS consumiendo la FastAPI local. Esta es la opción correcta para Fase 4.
+
+**PyQt6 (MVP):** El path de menor resistencia para un desarrollador Python. No requiere aprender JavaScript. Los widgets de Qt son maduros, tienen rendimiento nativo, y soportan thumbnails, listas con scroll, y layouts complejos. El costo: la UI no se puede migrar directamente a Tauri — hay que reescribirla en HTML/CSS/JS. Pero eso está planeado para Fase 4 y la FastAPI (el backend) no cambia.
+
+**Recomendación:** PyQt6 para MVP (Fases 0–3), Tauri para producción (Fase 4+).
+
+## Arquitectura PyQt6 MVP
+
+```
+MainWindow (QMainWindow)
+├── ToolBar
+│   ├── AnalyzeAudioButton
+│   ├── OpenLibraryButton
+│   └── SettingsButton
+│
+├── CentralWidget (QSplitter horizontal)
+│   │
+│   ├── LeftPanel — TranscriptPanel (QScrollArea)
+│   │   └── SceneList
+│   │       └── SceneWidget (por cada escena)
+│   │           ├── TimeLabel ("0:00 - 0:02")
+│   │           ├── FunctionBadge ("HOOK", "PROBLEM"...)
+│   │           ├── TextLabel (texto de la escena)
+│   │           └── ConceptLabel (concepto extraído)
+│   │
+│   ├── CenterPanel — RecommendationsPanel
+│   │   └── Per-scene RecommendationCard
+│   │       ├── ThumbnailGrid (5 thumbnails con score)
+│   │       └── SelectedClipInfo
+│   │
+│   └── RightPanel — GapsPanel + LibraryBrowser
+│       ├── GapsList
+│       │   └── GapCard
+│       │       ├── ConceptLabel
+│       │       ├── TikTokKeywordsList
+│       │       └── AIPromptsSection
+│       └── LibraryBrowserTab
+│           ├── CategoryTree
+│           └── ClipGrid
+│
+└── StatusBar
+    ├── ProgressBar (para operaciones largas)
+    ├── IndexingStatus ("1,247 clips indexados")
+    └── APIStatusIndicator
+```
+
+## Comunicación Frontend-Backend
+
+En el MVP con PyQt6, el frontend NO consume la FastAPI. Llama directamente a los módulos de Python (import directo). Esto es más simple para el MVP pero crea un acoplamiento que se elimina en Fase 4.
+
+```python
+# En PyQt6 MVP: import directo
+from aicos.modules.script_analyzer import ScriptAnalyzer
+from aicos.modules.clip_recommender import ClipRecommender
+
+class MainWindow(QMainWindow):
+    def analyze_audio(self, mp3_path: str):
+        # Ejecutar en QThread para no bloquear UI
+        worker = AnalysisWorker(mp3_path)
+        worker.finished.connect(self.on_analysis_complete)
+        worker.start()
+```
+
+```python
+# En Tauri (Fase 4): HTTP a FastAPI
+const response = await fetch('http://localhost:8000/analyze', {
+    method: 'POST',
+    body: formData  // mp3 file
+});
+const analysis = await response.json();
+```
+
+## State Management en PyQt6
+
+El estado de la sesión actual (proyecto activo, escenas, recomendaciones) se mantiene en un objeto `AppState` singleton que los widgets observan via Qt signals:
+
+```python
+class AppState(QObject):
+    project_changed = pyqtSignal(Project)
+    scene_selected = pyqtSignal(Scene)
+    recommendation_accepted = pyqtSignal(str, str)  # scene_id, clip_id
+    
+    def __init__(self):
+        self._current_project: Optional[Project] = None
+        self._scenes: List[Scene] = []
+        self._recommendations: Dict[str, List[Recommendation]] = {}
+```
+
+---
+
+# 15. Performance & Scalability
+
+## Métricas de Performance Objetivo
+
+| Operación | Target MVP | Target Fase 4 | Hardware Base |
+|---|---|---|---|
+| Bootstrap 1,247 clips | < 15 min | < 5 min | i5 12th + CPU only |
+| Search query (1 escena) | < 200ms | < 50ms | ChromaDB local |
+| Transcript 2 min audio | < 45s | < 15s | Whisper small CPU |
+| M4: clasificar 1 clip | < 20s | < 10s | Vision API |
+| Dashboard load (1 proyecto) | < 500ms | < 100ms | SQLite + thumb cache |
+| Thumbnail generation | < 1s/clip | < 0.3s/clip | FFmpeg CPU |
+
+## Scaling de Biblioteca
+
+ChromaDB con HNSW escala a millones de vectores con latencia sub-50ms. Para 10,000 clips (horizonte de 3 años), las búsquedas siguen siendo < 20ms. El verdadero bottleneck a escala mayor no es ChromaDB sino SQLite en queries con múltiples joins.
+
+Para > 50,000 clips: migrar SQLite a PostgreSQL (el ORM de SQLAlchemy hace esto transparente al código).
+
+## Concurrency Model
+
+El sistema tiene dos tipos de concurrency:
+
+**I/O bound (dominant):** Las llamadas a APIs de IA son I/O bound. Se usan coroutines async/await con `asyncio.gather()` para paralelizar hasta N operaciones simultáneas (N = `asyncio.Semaphore(5)` para LLM calls, sin límite para embedding batch).
+
+**CPU bound (minority):** El procesamiento de FFmpeg (thumbnails, metadata) es CPU bound. Se usa `asyncio.run_in_executor(None, ...)` para ejecutar en ThreadPoolExecutor sin bloquear el event loop. Para el bootstrap (1,247 clips), se usa `ProcessPoolExecutor` para verdadero paralelismo.
+
+## Background Jobs
+
+Las operaciones que no necesitan resultado inmediato se ejecutan en background via la tabla `background_jobs` en SQLite + un worker loop en thread separado. Ver Sección 16 para el diseño completo.
+
+---
+
+# 16. Background Jobs System
+
+## Diseño del Worker Loop
+
+```python
+class JobWorker:
+    """Worker que procesa jobs de la tabla background_jobs en background."""
+    
+    POLL_INTERVAL = 2.0  # segundos entre polls
+    
+    JOB_HANDLERS = {
+        "index_clip": self._handle_index_clip,
+        "generate_thumbnail": self._handle_generate_thumbnail,
+        "classify_clip": self._handle_classify_clip,
+        "enrich_gap": self._handle_enrich_gap,
+        "reindex_library": self._handle_reindex_library,
+    }
+    
+    async def run(self):
+        """Loop principal del worker. Corre en asyncio task separado."""
+        while self._running:
+            job = await self._claim_next_job()
+            if job:
+                await self._execute_job(job)
+            else:
+                await asyncio.sleep(self.POLL_INTERVAL)
+    
+    async def _claim_next_job(self) -> Optional[Job]:
+        """Atomic claim de job pendiente (evita race conditions en futuros multi-worker)."""
+        async with db.session() as session:
+            job = await session.execute(
+                text("""
+                    UPDATE background_jobs 
+                    SET status='running', started_at=datetime('now'), attempts=attempts+1
+                    WHERE id = (
+                        SELECT id FROM background_jobs 
+                        WHERE status='pending' AND attempts < max_attempts
+                        ORDER BY created_at ASC 
+                        LIMIT 1
+                    )
+                    RETURNING *
+                """)
+            )
+            await session.commit()
+            return job.first()
+    
+    async def _execute_job(self, job: Job):
+        try:
+            handler = self.JOB_HANDLERS[job.job_type]
+            payload = json.loads(job.payload)
+            await handler(**payload)
+            await self._mark_completed(job.id)
+        except Exception as e:
+            await self._mark_failed(job.id, str(e))
+            logger.error(f"Job {job.id} failed: {e}", exc_info=True)
+```
+
+## Tipos de Jobs y Sus Payloads
+
+**`index_clip`:** `{clip_id: str, force_reindex: bool}` — Genera embedding y lo inserta en ChromaDB. Corre cuando se agrega un clip nuevo o cuando el usuario fuerza re-indexado.
+
+**`generate_thumbnail`:** `{clip_id: str, video_path: str}` — Genera thumbnail JPEG. Corre en bootstrap y al agregar clip nuevo.
+
+**`classify_clip`:** `{file_path: str}` — Pipeline completo de M4 para un clip nuevo en `incoming/`. El watcher encola este job en lugar de ejecutar directamente.
+
+**`enrich_gap`:** `{gap_id: str}` — Genera keywords TikTok y prompts IA para un gap. Se encola en background después de mostrar el análisis inicial al usuario.
+
+**`reindex_library`:** `{library_root: str, force_all: bool}` — Re-indexa clips no indexados (o todos si `force_all=True`). Solo se encola manualmente por el usuario.
+
+## Retry Logic
+
+Los jobs fallidos se reintentan hasta `max_attempts` (default: 3). El intervalo entre reintentos es exponencial: el worker simplemente no los procesa en el mismo poll cycle si ya fallaron recientemente (se detecta por `attempts` vs `max_attempts`).
+
+Para errores permanentes (archivo no encontrado, API key inválida), el job se marca como `failed` definitivamente y aparece en el dashboard como error que el usuario debe resolver manualmente.
+
+---
+
+# 17. Error Handling Strategy
+
+## Principios
+
+**Fail fast en startup:** Al iniciar la app, verificar que todos los recursos críticos existen (directorio de biblioteca, archivo SQLite, directorio de ChromaDB, API key de OpenAI). Si algo falta, mostrar error claro y no continuar.
+
+**Fail graceful en runtime:** Durante el uso, los errores no deben crashear la app. Se loggean, se notifican al usuario, y el sistema continúa en modo degradado si es posible.
+
+**Never lose data:** Las operaciones que modifican la biblioteca (mover clip, actualizar SQLite, insertar en ChromaDB) siguen un orden específico: SQLite primero, ChromaDB segundo, filesystem tercero. Si algún paso falla, el estado anterior es recuperable.
+
+## Error Categories y Handling
+
+**API Errors (OpenAI, Anthropic):**
+- `RateLimitError`: Retry con exponential backoff via tenacity. Max 3 intentos.
+- `APIConnectionError`: Retry. Si falla 3 veces, notificar al usuario y continuar sin la funcionalidad IA.
+- `AuthenticationError`: No retry. Error fatal — requiere intervención del usuario (verificar API key).
+- `InvalidRequestError`: No retry. Log + notificar al usuario que el input fue rechazado.
+
+**Filesystem Errors:**
+- `FileNotFoundError` en clip: Marcar clip como `missing_file=True` en SQLite. No crashear.
+- `PermissionError`: Log + notificar. El usuario puede tener el archivo abierto en otro programa.
+- `DiskFullError`: Error crítico — pausar todos los jobs de background y notificar urgentemente.
+
+**ChromaDB Errors:**
+- Corrupción de índice: El índice puede reconstruirse con `aicos reindex --force`. Documentar claramente en el dashboard.
+- `InvalidDimensionError`: Ocurre si se cambia el modelo de embeddings sin migrar. Detectar en startup y ejecutar migración automática.
+
+**FFmpeg Errors:**
+- Clip corrupto o formato no soportado: Mover a `incoming/corrupted/` con log del error.
+- FFmpeg no instalado: Error fatal en startup — mostrar instrucciones de instalación.
+
+**Corrupted Clips:**
+```python
+async def safe_process_clip(clip_path: Path) -> Optional[VideoMetadata]:
+    try:
+        metadata = ffmpeg_service.get_video_metadata(clip_path)
+        if metadata.duration_ms < 500:
+            raise ValueError(f"Clip too short: {metadata.duration_ms}ms")
+        return metadata
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg error for {clip_path}: {e}")
+        await move_to_corrupted(clip_path)
+        return None
+```
+
+## Logging Strategy
+
+Todos los logs son JSON estructurado usando Python `logging` con un `JSONFormatter` custom:
+
+```json
+{
+  "timestamp": "2025-05-01T14:23:45.123Z",
+  "level": "ERROR",
+  "module": "clip_organizer",
+  "function": "classify_clip",
+  "message": "Vision API classification failed",
+  "clip_path": "E:/incoming/video_12345.mp4",
+  "error": "RateLimitError",
+  "duration_ms": 2341,
+  "attempt": 2
+}
+```
+
+Los logs se rotan diariamente con retención de 30 días. El dashboard tiene una vista de "últimos errores" que parsea los logs recientes.
+
+---
+
+# 18. Security & Privacy
+
+## Local-First como Garantía de Privacidad
+
+El 99% del procesamiento ocurre en la máquina local. Los únicos datos que salen de la máquina son:
+- **Texto de guiones** → OpenAI API para concepto extraction y generación de prompts.
+- **Frames de video** → OpenAI Vision API para clasificación de clips.
+- **Texto de clips** → OpenAI API para generación de embeddings.
+
+Ningún archivo de video completo sale de la máquina. Los frames enviados a Vision API son JPEGs de 640×360 que son suficientes para clasificación visual pero no son los clips originales en resolución completa.
+
+## API Key Storage
+
+Las API keys se almacenan en el archivo `config.yaml` en `~/.aicos/`. Este directorio debe tener permisos restrictivos (600 en Unix/Linux). En Windows, el directorio está en `%APPDATA%\aicos\` con permisos del usuario actual.
+
+En una versión futura, las keys se pueden almacenar en el keychain del OS (Windows Credential Manager, macOS Keychain) usando la librería `keyring`.
+
+**No hardcodear API keys nunca.** El sistema lee las keys desde `config.yaml` o variables de entorno. Las variables de entorno tienen precedencia (`OPENAI_API_KEY` sobre el valor en config.yaml).
+
+## .gitignore Crítico
+
+```gitignore
+# NUNCA commitear estos archivos
+config.yaml          # Contiene API keys
+~/.aicos/            # Directorio de usuario
+*.db                 # Base de datos SQLite
+*.db-shm
+*.db-wal
+vector_store/        # ChromaDB persistence
+thumbnails/          # Cache de thumbnails
+logs/                # Logs con paths de archivos privados
+temp/                # Frames temporales
+
+# Sí commitear
+config.yaml.example  # Template sin valores reales
+.cursorrules
+ARCHITECTURE.md
+```
+
+---
+
+# 19. Cursor-First Development Strategy
+
+## Por Qué Cursor Pro Es El Copiloto Correcto
+
+Cursor Pro con Claude Sonnet 4 tiene acceso completo al codebase vía su context window. Esto permite pedirle implementaciones completas de módulos, refactors de funciones existentes, y debugging de errores — con contexto de toda la arquitectura, no solo del archivo abierto.
+
+El riesgo es el contrario: con tanto contexto disponible, Cursor tiende a sobre-generar — agregar funcionalidades no pedidas, crear abstracciones prematuras, y violar boundaries de arquitectura porque "parece mejor". El `.cursorrules` y el proceso de desarrollo disciplinado mitigan esto.
+
+## El Archivo `.cursorrules` — Completo
+
+```markdown
+# AICOS — Cursor Architecture Rules v1.0
+
+## CRITICAL RULES (never violate)
+
+1. External API calls ONLY in `aicos/services/`. 
+   Never call OpenAI/Anthropic in modules/, core/, or api/.
+
+2. ChromaDB operations ONLY in `aicos/core/vector_store.py`.
+   Never import chromadb elsewhere.
+
+3. FFmpeg operations ONLY in `aicos/services/ffmpeg_service.py`.
+   Never call subprocess with ffmpeg elsewhere.
+
+4. SQLite/SQLAlchemy operations ONLY via `aicos/services/library_service.py` 
+   or `aicos/database/db.py`. Never write raw SQL in modules/.
+
+5. Taxonomy filename logic ONLY in `aicos/taxonomy/`.
+   Never parse or build filenames elsewhere.
+
+6. Module communication via Pydantic models ONLY (defined in aicos/models/schemas.py).
+   Never pass raw dicts between modules.
+
+7. No global mutable state. Use dependency injection via FastAPI Depends().
+
+8. No hardcoded paths or API keys. All from config.yaml via aicos.config module.
+
+## CODE STANDARDS
+
+- Python 3.11+. Full type hints on ALL functions and methods.
+- Google-style docstrings on ALL public functions.
+- `logger = logging.getLogger(__name__)` at module level. Never print().
+- Explicit exceptions: never bare `except:`. Always `except SpecificError as e:`.
+- Async functions for all I/O operations. Sync only for CPU-bound pure computation.
+- Pydantic v2 models. Use `model_validator` not `__init__` for validation logic.
+
+## TAXONOMY RULES
+
+- `taxonomy/constants.py` is the single source of truth for:
+  GENDER_PREFIXES, NARRATIVE_FUNCTIONS, NARRATIVE_EXPANSION, SUBCATEGORY_EXPANSION
+- When adding a new subcategory to SUBCATEGORY_EXPANSION, also add 3-5 synonyms in both
+  English and Spanish.
+- taxonomy/parser.py must handle these legacy prefixes: NEUTRAL→N, KID→KIDS, NEUTRAL_→N_.
+
+## TESTING RULES
+
+- Every function in core/ needs a corresponding test in tests/.
+- Mock ALL external API calls. Never call real OpenAI/Anthropic in tests.
+- Use fixtures in tests/fixtures/ for test data.
+- Test taxonomy/parser.py with the actual non-compliant filenames from the library:
+  "clearzal pain relieving gel 03(12)-1.mp4", "TEMPRORAL(1)-1.mp4", 
+  "NEUTRAL_AUTHORITY_SPINE_3D_ANIMATION_01.mp4"
+
+## WHAT NOT TO DO (anti-patterns)
+
+- Do NOT add kwargs **kwargs to module functions (use explicit Pydantic models)
+- Do NOT create new database tables without updating schemas.py AND db.py AND ARCHITECTURE.md
+- Do NOT add new external dependencies without justifying in a comment WHY
+- Do NOT generate "helper" functions that duplicate logic already in taxonomy/ or services/
+- Do NOT use f-strings for SQL queries (use SQLAlchemy or parameterized queries)
+- Do NOT swallow exceptions with empty except blocks
+```
+
+## Estructura del Repositorio
+
+```
+aicos/                              # Root del proyecto
+│
+├── .cursorrules                    # Reglas de arquitectura para Cursor
+├── ARCHITECTURE.md                 # Decisiones arquitectónicas con justificación
+├── README.md                       # Setup y primer uso
+├── config.yaml.example             # Template de configuración
+├── pyproject.toml                  # Dependencias con Poetry
+│
+├── aicos/                          # Package principal
+│   ├── __init__.py
+│   ├── config.py                   # Carga config.yaml → Pydantic Settings
+│   │
+│   ├── core/                       # Procesamiento local, determinístico
+│   │   ├── transcriber.py          # faster-whisper wrapper
+│   │   ├── segmenter.py            # Scene segmentation + hook detection
+│   │   ├── concept_extractor.py    # spaCy → LLM fallback
+│   │   ├── embedder.py             # OpenAI embeddings con cache
+│   │   └── vector_store.py         # ChromaDB abstraction
+│   │
+│   ├── modules/                    # Orquestadores de pipelines
+│   │   ├── script_analyzer.py      # MP3 → ProjectAnalysis
+│   │   ├── clip_recommender.py     # Scene → Recommendations
+│   │   ├── gap_handler.py          # Scene → Gap + keywords + prompts
+│   │   ├── clip_organizer.py       # Incoming clip → classified + indexed
+│   │   └── prompt_intelligence.py  # Prompt memory + generation
+│   │
+│   ├── services/                   # External calls + CRUD
+│   │   ├── llm_service.py          # OpenAI/Anthropic LLM
+│   │   ├── vision_service.py       # GPT-4o Vision
+│   │   ├── ffmpeg_service.py       # FFmpeg + SHA256
+│   │   └── library_service.py      # SQLite CRUD para clips
+│   │
+│   ├── taxonomy/                   # Lógica de taxonomía de biblioteca
+│   │   ├── __init__.py
+│   │   ├── constants.py            # GENDER_MAP, NARRATIVE_EXPANSION, SUBCATEGORY_EXPANSION
+│   │   ├── parser.py               # filename → TaxonomyResult
+│   │   ├── builder.py              # TaxonomyResult → filename
+│   │   └── text_builder.py         # TaxonomyResult → semantic text
+│   │
+│   ├── models/
+│   │   └── schemas.py              # TODOS los Pydantic models del sistema
+│   │
+│   ├── database/
+│   │   ├── db.py                   # SQLAlchemy engine + session factory
+│   │   ├── models.py               # SQLAlchemy ORM models
+│   │   └── migrations/             # Alembic migrations
+│   │
+│   ├── api/                        # FastAPI (Fase 2+)
+│   │   ├── main.py                 # App + lifespan + middleware
+│   │   ├── deps.py                 # Dependency injection
+│   │   └── routers/
+│   │       ├── analyze.py          # POST /analyze
+│   │       ├── search.py           # POST /search  
+│   │       ├── library.py          # GET/POST /library
+│   │       ├── gaps.py             # GET /gaps/{project_id}
+│   │       └── organize.py         # POST /organize
+│   │
+│   ├── prompts/                    # Prompt templates (archivos .txt)
+│   │   ├── concept_extraction.txt
+│   │   ├── gap_keywords.txt
+│   │   ├── image_prompt.txt
+│   │   ├── motion_prompt.txt
+│   │   └── vision_classify.txt
+│   │
+│   ├── frontend/                   # PyQt6 app (MVP)
+│   │   ├── app.py                  # QApplication entry point
+│   │   ├── main_window.py          # MainWindow
+│   │   ├── widgets/
+│   │   │   ├── transcript_panel.py
+│   │   │   ├── recommendations_panel.py
+│   │   │   └── gaps_panel.py
+│   │   └── workers/                # QThread workers para operaciones largas
+│   │       ├── analysis_worker.py
+│   │       └── classification_worker.py
+│   │
+│   └── scripts/                    # CLI utilities
+│       ├── bootstrap_index.py      # Indexar biblioteca completa
+│       ├── reindex.py              # Re-indexar clips específicos
+│       └── validate_library.py     # Detectar clips no conformes
+│
+└── tests/
+    ├── conftest.py                  # Fixtures globales
+    ├── test_taxonomy_parser.py      # Tests con filenames reales de la biblioteca
+    ├── test_segmenter.py
+    ├── test_concept_extractor.py
+    ├── test_clip_recommender.py
+    └── fixtures/
+        ├── sample_transcript.json
+        ├── sample_library_structure.json
+        └── non_compliant_filenames.txt
+```
+
+## Workflow de Desarrollo Por Módulo
+
+Cada módulo nuevo sigue este flujo antes de usar Cursor:
+
+**1. Definir el contrato (5 min):** Escribir el Pydantic model de input y output en `schemas.py`. Esto es lo único que Cursor no debe generar solo — es una decisión de arquitectura.
+
+**2. Escribir el test (10 min):** Un test de integración que describe el comportamiento esperado. Cursor completará la implementación para pasar este test.
+
+**3. Prompt de Cursor (el desarrollador escribe):** Incluir siempre: el contrato (schemas), el test, las cursorrules relevantes, y qué no debe hacer. Ejemplo de estructura de prompt:
+
+```
+Implementa [MÓDULO] en [RUTA].
+
+INPUT: [PasteSchemaAquí]
+OUTPUT: [PasteSchemaAquí]
+
+El módulo debe pasar este test:
+[PasteTestAquí]
+
+Restricciones (del .cursorrules):
+- [Restricción específica 1]
+- [Restricción específica 2]
+
+NO incluyas: [lista de cosas que Cursor suele agregar innecesariamente]
+```
+
+**4. Revisión crítica (no opcional):** Leer el código generado línea a línea verificando: ¿viola alguna cursorrule? ¿agrega dependencias no autorizadas? ¿maneja errores correctamente?
+
+**5. Documentar en ARCHITECTURE.md:** Cualquier decisión no obvia tomada durante la implementación.
+
+---
+
+# 20. Recommended Tech Stack
+
+## Backend Core
+
+**Python 3.11** — No hay alternativa real para este stack. El ecosistema de IA/ML es Python-first. `match` statements de 3.10+, mejores type hints, mejor performance de asyncio vs 3.9.
+
+**FastAPI 0.111+** — La API local más eficiente en Python. Async nativo, validación Pydantic automática, documentación OpenAPI generada. Alternativa (Flask) es más simple pero sin async nativo ni validación automática.
+
+**SQLAlchemy 2.0 (async)** — ORM maduro con soporte async. La versión 2.0 tiene una API más limpia. Alembic para migraciones. Permite migración futura a PostgreSQL sin cambiar el código de la aplicación.
+
+**Pydantic v2** — Validación de datos 5–50x más rápida que v1. Models son la única forma de comunicación entre módulos. Las respuestas de FastAPI se validan automáticamente.
+
+## AI/ML
+
+**faster-whisper** — Implementación de Whisper en CTranslate2. 2–4x más rápido que la implementación oficial de OpenAI. El modelo `small` con `compute_type="int8"` corre eficientemente en CPU. Completamente local, sin costo de API.
+
+**OpenAI `text-embedding-3-small`** — El mejor balance costo/calidad para embeddings multilingüe. 1536 dimensiones. $0.00002/1K tokens = ~$0.01 para indexar 1,247 clips. Tiene backward compatibility garantizada por OpenAI.
+
+**spaCy `es_core_news_sm`** — Modelo ligero (~12MB) para NLP en español. Solo para noun phrase extraction en el concept extractor. El modelo `md` tiene mejor coverage de vocabulario técnico si el `sm` falla mucho en términos médicos.
+
+**ChromaDB 0.5+** — Base vectorial embebida. Sin servidor, sin configuración. Persistencia automática en disco. HNSW para búsquedas sub-50ms sobre 10,000 documentos. La alternativa (LanceDB) tiene mejor integración con Arrow/DuckDB para queries híbridas — candidato para migración en Fase 3 si se necesitan queries SQL sobre vectores.
+
+**GPT-4o** — Para LLM tasks (concept extraction complejo, gap keywords, prompt generation) y para Vision API (clasificación de clips). Un solo modelo para todas las tareas LLM/Vision reduce la complejidad de configuración. `gpt-4o-mini` para tasks simples (concept extraction) si el costo se vuelve relevante.
+
+## Frontend
+
+**PyQt6 (MVP)** — Desktop app nativa en Python. No requiere JavaScript. Qt tiene el ecosistema de widgets más maduro para Python. Alternativas (Tkinter: demasiado básico; wxPython: menos mantenido; Dear PyGui: moderno pero sin los widgets específicos necesarios).
+
+**Tauri 2.0 (Fase 4)** — Reemplaza PyQt6 con una UI en HTML/CSS/JS sobre un WebView nativo. Produce ejecutables <20MB. La FastAPI continúa siendo el backend — Tauri solo actúa como shell. Alternativa (Electron): 10x más pesado que Tauri.
+
+## Infrastructure / Tools
+
+**watchdog** — Observación de filesystem para `incoming/`. La alternativa más simple (polling con `os.listdir`) funciona pero watchdog es más eficiente en sistemas con muchos archivos.
+
+**tenacity** — Retry logic con decoradores. La alternativa (implementación manual de backoff) es más código sin beneficio. `tenacity` tiene buena integración con async.
+
+**rapidfuzz** — Fuzzy string matching para el TaxonomyMatcher. Implementado en C++, ~100x más rápido que `fuzzywuzzy`. Usado para matching de subcategorías al clasificar clips nuevos.
+
+**aiofiles** — I/O de archivos async para no bloquear el event loop al leer/escribir archivos grandes.
+
+**Pillow** — Manipulación de imágenes para thumbnails (resize, crop). Complementa FFmpeg para casos donde FFmpeg es overkill.
+
+**structlog / loguru** — Logging estructurado en JSON. `loguru` tiene una API más simple que `structlog` para uso individual.
+
+**Poetry** — Gestión de dependencias con `pyproject.toml`. Lockfile reproducible. Alternativa (pip + requirements.txt) es más simple pero menos reproducible.
+
+**pytest + pytest-asyncio** — Testing. `pytest-asyncio` para tests de coroutines. `pytest-mock` para mocking de APIs externas.
+
+---
+
+# 21. MVP Technical Scope
+
+## Qué Construir Primero (Prioridad Estricta)
+
+**MVP v0 — Validación Semántica (Fase 0, Semana 1–2):**
+El objetivo no es un sistema completo — es validar que la búsqueda semántica funciona para esta biblioteca específica.
+
+Construir: `taxonomy/parser.py`, `taxonomy/text_builder.py`, `taxonomy/constants.py`, `database/db.py` + schema, `services/ffmpeg_service.py` (solo thumbnail + metadata), `core/embedder.py`, `core/vector_store.py`, script `bootstrap_index.py`.
+
+Criterio de éxito: ejecutar `python -m aicos.scripts.bootstrap_index` y luego `python -c "from aicos.core.vector_store import VectorStore; vs = VectorStore(); print(vs.search('knee pain stairs woman', n=5))"` y ver `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` en los primeros resultados.
+
+**MVP v1 — Pipeline CLI (Fase 1, Semana 3–5):**
+Construir: `core/transcriber.py`, `core/segmenter.py`, `core/concept_extractor.py`, `modules/script_analyzer.py`, `modules/clip_recommender.py`, `services/llm_service.py` (solo para concept extraction fallback), `modules/gap_handler.py` (solo gap detection + keywords TikTok).
+
+Criterio de éxito: `python -m aicos analyze mi_audio.mp3` produce un JSON con escenas, recomendaciones por escena, y gaps identificados.
+
+**MVP v2 — Auto Organizer (Fase 1.5, Semana 6–7):**
+Construir: `core/filesystem_watcher.py`, `services/vision_service.py`, `modules/clip_organizer.py`.
+
+Criterio de éxito: Dejar 5 clips en `incoming/` y que todos aparezcan correctamente clasificados en la biblioteca con el naming correcto.
+
+**MVP v3 — Dashboard (Fase 2, Semana 8–10):**
+Construir: `api/main.py` + routers básicos, `frontend/app.py` con los tres paneles principales.
+
+Criterio de éxito: El productor completa un flujo de análisis completo sin usar el CLI.
+
+## Qué Dejar Fuera del MVP
+
+- Prompt Intelligence System completo (Fase 3).
+- Learning/feedback loop (Fase 3).
+- Hook Library con búsqueda semántica (Fase 3).
+- Preview de clips en dashboard (Fase 4).
+- Exportación de proyecto para CapCut (Fase 4).
+- CapCut Export Watcher (Fase 4).
+- GPU acceleration para Whisper (opcional, Fase 2).
+- Tauri frontend (Fase 4).
+
+## Qué Fakear en MVP v0/v1
+
+**Gap prompts IA:** En MVP v1, la generación de prompts de imagen/movimiento puede ser un template hardcodeado enriquecido con el concepto, sin llamada real al LLM. El template produce prompts aceptables y se reemplaza por generación dinámica en Fase 2.
+
+**Narrative function inference:** En MVP v1, la inferencia de función narrativa puede ser puramente posicional (primeros 15% = HOOK, últimos 10% = CTA, resto = PROBLEM/BENEFIT/RESULT por keywords simples). El LLM fallback para casos ambiguos se agrega en Fase 2.
+
+**Dashboard de biblioteca:** En MVP v2, el browser de biblioteca puede ser un simple árbol de carpetas que muestra los clips con sus thumbnails. Las funcionalidades avanzadas (filtros, stats de cobertura) se agregan en Fase 3.
+
+---
+
+# 22. Development Roadmap
+
+## Fase 0 — Foundation & Semantic Validation (Semana 1–2)
+
+**Semana 1:**
+- Setup repositorio: Poetry, pyproject.toml, estructura de directorios, git init, `.cursorrules`.
+- Implementar `aicos/config.py` (carga config.yaml con Pydantic Settings).
+- Implementar `aicos/taxonomy/constants.py` con todos los mapas de expansión.
+- Implementar `aicos/taxonomy/parser.py` con tests para los 15+ filenames problemáticos de la biblioteca.
+- Implementar `aicos/taxonomy/text_builder.py`.
+- Implementar `aicos/taxonomy/builder.py`.
+
+**Semana 2:**
+- Implementar `aicos/database/db.py` + `models.py` con schema completo.
+- Implementar `aicos/services/ffmpeg_service.py` (metadata + thumbnail).
+- Implementar `aicos/core/embedder.py`.
+- Implementar `aicos/core/vector_store.py`.
+- Implementar `aicos/scripts/bootstrap_index.py`.
+- **Run bootstrap:** Indexar las 1,247 clips de la biblioteca. Generar reporte de clips no conformes.
+- **Validación:** Ejecutar 10 búsquedas manuales y verificar calidad de resultados.
+
+**Milestone de Fase 0:** La biblioteca está indexada. Las búsquedas semánticas desde Python REPL retornan resultados relevantes con consistencia > 70%.
+
+## Fase 1 — Script Analyzer + Clip Recommender CLI (Semana 3–5)
+
+**Semana 3:**
+- `aicos/core/transcriber.py` (faster-whisper singleton).
+- `aicos/core/segmenter.py` (segmentación + hook detection + narrative function inference).
+- Tests con transcripts reales de 3 creativos previos.
+
+**Semana 4:**
+- `aicos/core/concept_extractor.py` (spaCy + LLM fallback).
+- `aicos/services/llm_service.py` (OpenAI wrapper con retry).
+- `aicos/modules/script_analyzer.py`.
+
+**Semana 5:**
+- `aicos/modules/clip_recommender.py` con TaxonomyBooster.
+- `aicos/modules/gap_handler.py` (detección + keywords TikTok).
+- CLI script `python -m aicos analyze {mp3_path}`.
+- **Benchmark:** Analizar 5 proyectos pasados. Medir % de coincidencia entre recomendaciones del sistema y selección real del productor.
+
+**Milestone de Fase 1:** CLI funcional. > 60% de recomendaciones coinciden con selección real. El productor puede ver el valor del sistema.
+
+## Fase 1.5 — Auto Organizer (Semana 6–7)
+
+**Semana 6:**
+- `aicos/services/vision_service.py` (GPT-4o Vision con prompt de taxonomía).
+- `aicos/core/filesystem_watcher.py` (watchdog).
+
+**Semana 7:**
+- `aicos/modules/clip_organizer.py` (pipeline completo M4).
+- Background jobs system (`background_jobs` table + `JobWorker`).
+- **Test:** Procesar los clips no conformes de la biblioteca (los 58 detectados en Fase 0).
+
+**Milestone de Fase 1.5:** Clips en `incoming/` se clasifican, nombran, y mueven correctamente. Los 58 clips no conformes han sido reclasificados.
+
+## Fase 2 — Dashboard MVP (Semana 8–10)
+
+**Semana 8:**
+- `aicos/api/main.py` + routers: `/analyze`, `/search`, `/library/stats`.
+- Integrar FastAPI con todos los módulos via dependency injection.
+
+**Semana 9:**
+- `aicos/frontend/main_window.py` (PyQt6 scaffold).
+- `aicos/frontend/widgets/transcript_panel.py`.
+- `aicos/frontend/widgets/recommendations_panel.py` (thumbnails + scores).
+
+**Semana 10:**
+- `aicos/frontend/widgets/gaps_panel.py`.
+- QThread workers para operaciones largas (análisis, clasificación).
+- Feedback básico: aceptar/rechazar recomendación → persiste en `recommendations.accepted`.
+- **Test en producción:** El productor usa el dashboard para completar un creativo real.
+
+**Milestone de Fase 2:** Dashboard usable en producción. Tiempo por creativo medido en 5 proyectos consecutivos.
+
+## Fase 3 — Intelligence Layer (Semana 11–14)
+
+- `aicos/modules/prompt_intelligence.py` completo (memoria + vectorización de prompts).
+- Hook Library con búsqueda semántica.
+- Scoring de clips por historial de uso (boost basado en `recommendations.accepted`).
+- Re-ranking con feedback histórico del usuario.
+- Dashboard de cobertura de biblioteca (qué subcategorías están bajo en clips).
+- `aicos/api/routers/analytics.py` con stats del sistema.
+
+**Milestone de Fase 3:** Las recomendaciones tienen > 75% de coincidencia con selección real. El productor puede ver métricas de su biblioteca.
+
+## Fase 4 — UI Upgrade & Exports (Semana 15–18)
+
+- Migrar frontend de PyQt6 a Tauri (HTML/CSS/JS consumiendo FastAPI).
+- Preview de clips en UI (video player embebido).
+- Exportación de proyecto: lista de clips con paths y timestamps para guiar trabajo en CapCut.
+- CapCut Export Watcher (automatizar el post-processing manual).
+- GPU acceleration para Whisper (setting configurable).
+- Optimizaciones de performance para bibliotecas > 5,000 clips.
+
+---
+
+# 23. Technical Risks
+
+## R1 — Calidad de Embeddings en Dominio Específico
+
+**Descripción técnica:** `text-embedding-3-small` es un modelo general. El dominio de esta biblioteca tiene características específicas: términos médicos en español (`incontinencia urinaria`, `tendón rotuliano`), ingredientes naturales poco comunes (`ashwagandha`, `astaxanthin`, `berberina`), y mezcla constante de español (guion) con inglés (nombres de archivo). El modelo puede no capturar bien estas relaciones semánticas cross-lingüísticas.
+
+**Señales de problema:** Durante el benchmark de Fase 0, si las búsquedas de términos médicos específicos retornan clips irrelevantes, o si `N_AUTHORITY_ANIMATION_NEURON_ANIMATION_01.mp4` no aparece cuando se busca "animación neurológica cerebro".
+
+**Mitigaciones:**
+- Enriquecer `SUBCATEGORY_EXPANSION` con más sinónimos médicos en español.
+- Para subcategorías críticas (las de mayor uso: KNEE_PAIN, URINARY_INCONTINENCE, EYE_PROBLEM), agregar hasta 20 sinónimos detallados.
+- Si el problema persiste: probar `text-embedding-3-large` (3x más caro, mejor calidad) para clips de categorías problemáticas específicas.
+- Fallback de largo plazo: fine-tune de un modelo sentence-transformers en un dataset construido con las búsquedas manuales del productor (labels: "buscó X, eligió clip Y").
+
+## R2 — Semantic Ambiguity en Concept Extraction
+
+**Descripción técnica:** El concepto extractor puede producir conceptos demasiado genéricos ("persona con problema") o demasiado específicos ("mujer de 50 años con dolor articular crónico en rodilla derecha"). Los conceptos muy genéricos producen resultados ruidosos en ChromaDB; los muy específicos no tienen match en la biblioteca.
+
+**El concepto óptimo** para búsqueda tiene entre 2–5 palabras en inglés que correspondan a una subcategoría o contexto de la taxonomía.
+
+**Mitigación:** El prompt de concept extraction incluye ejemplos few-shot de conceptos buenos y malos. El benchmark de Fase 1 revelará los patrones problemáticos. El `DOMAIN_TRANSLATION_MAP` en `taxonomy/constants.py` puede expandirse con más mapeos directos español→concepto-en-taxonomía para los términos más frecuentes.
+
+## R3 — ChromaDB Corruption Recovery
+
+**Descripción técnica:** ChromaDB persiste datos en disco usando un formato propio. En casos de crash durante escritura (power failure, kill -9), el índice puede corromperse.
+
+**Mitigación:** ChromaDB es un índice derivado, no la fuente de verdad. SQLite es la fuente de verdad. Si ChromaDB se corrompe, el comando `python -m aicos.scripts.reindex --force` reconstruye el índice completo desde SQLite en ~10 minutos. Documentar este procedimiento prominentemente en el README.
+
+Adicionalmente, el sistema hace un health check de ChromaDB al startup (intenta una query simple). Si falla, muestra un error claro con instrucciones de recovery.
+
+## R4 — Vision API Classification Errors
+
+**Descripción técnica:** GPT-4o Vision puede clasificar incorrectamente clips con contenido ambiguo (animaciones médicas abstractas, clips de contexto muy genérico) o clips de baja calidad visual (video comprimido, blurry).
+
+**Probabilidad real basada en la biblioteca:** La mayoría de los clips de `incoming/` serán descargas de TikTok (calidad variable) o clips generados con IA (a veces con artefactos). Estimación conservadora: 10–15% de clasificaciones incorrectas sin revisión humana.
+
+**Mitigación:** El threshold de confianza de 0.75 filtra los casos dudosos a `needs_review/`. El prompt de Vision incluye la taxonomía real de la biblioteca para anclar las categorías posibles. El modo default requiere confirmación del usuario — solo el modo avanzado aplica automáticamente.
+
+## R5 — Whisper Performance en CPU para Audios Largos
+
+**Descripción técnica:** El productor genera creativos de hasta 4 minutos. Con faster-whisper `small` en CPU con `compute_type="int8"`, la transcripción de 4 minutos puede tomar 60–90 segundos.
+
+**Impacto en UX:** El productor sube el MP3 y espera 90 segundos antes de ver cualquier resultado. Esto puede ser frustrante y puede llevar a abandono del flujo.
+
+**Mitigaciones:**
+- Progress bar visible con estimación de tiempo restante.
+- Streaming de resultados: mostrar las primeras 5 escenas mientras se procesan las siguientes.
+- Opción en config.yaml de usar la API de Whisper de OpenAI (~$0.006/minuto de audio, latencia < 10 segundos).
+- GPU acceleration como setting en Fase 2 (si el productor tiene CUDA disponible).
+
+## R6 — Taxonomy Drift
+
+**Descripción técnica:** A medida que la biblioteca crece y se agregan nuevos productos (vehículos, kids, productos de nicho), la taxonomía puede necesitar nuevas categorías que el sistema actual no contempla. Si M4 crea demasiadas categorías nuevas sin control, la taxonomía se fragmenta y la búsqueda se degrada.
+
+**Mitigación:** El `TaxonomyMatcher` con `rapidfuzz` previene subcategorías casi-duplicadas. Nuevas categorías de primer nivel (nuevo género o función narrativa) solo se crean manualmente. El dashboard de cobertura (Fase 3) muestra la fragmentación de la taxonomía y permite al productor consolidar subcategorías similares.
+
+## R7 — SQLite Locking en Operaciones Concurrentes
+
+**Descripción técnica:** SQLite tiene un write lock global. Si el `JobWorker` (background) y una operación del dashboard intentan escribir simultáneamente, uno de ellos esperará. Con el timeout default de 5 segundos, el 99% de los casos se resuelven solos. El 1% restante retorna `OperationalError: database is locked`.
+
+**Mitigación:** Configurar `timeout=30` en la conexión SQLAlchemy. Para el MVP con uso single-user, el lock contention es mínimo. Si se detectan errores de locking en logs, aumentar el timeout. La migración a PostgreSQL (Fase SaaS) elimina este problema definitivamente.
+
+---
+
+# 24. Future Expansion Opportunities
+
+## FO-1 — CapCut Export Watcher
+
+**Qué es:** Un watcher de la carpeta de exports de CapCut que detecta cuando se genera un nuevo video procesado, lo copia automáticamente a la carpeta del proyecto con el nombre correcto, y notifica al productor.
+
+**Complejidad técnica:** Baja. Extensión del `FilesystemWatcher` existente. La lógica de naming del archivo exportado se infiere del proyecto activo en la sesión del dashboard.
+
+**Impacto:** Elimina los pasos manuales 15–19 del flujo actual (ir al cache, copiar, mover, renombrar). ~5–10 minutos por creativo.
+
+## FO-2 — CapCut Project File Generator
+
+**Qué es:** Generar un archivo de proyecto de CapCut pre-configurado con los clips seleccionados en el dashboard, ordenados en el timeline según los timestamps del transcript.
+
+**Complejidad técnica:** Alta. CapCut no tiene API oficial ni documentación del formato de proyecto. Requiere reverse-engineering del formato `.capcut` (que es JSON/ZIP). Factible pero requiere investigación.
+
+**Impacto potencial:** Enorme. Eliminaría el 70% del trabajo manual de edición. Es el feature con mayor potencial de ahorro de tiempo del sistema completo.
+
+## FO-3 — Hybrid Search con DuckDB + LanceDB
+
+**Qué es:** LanceDB (alternativa a ChromaDB) tiene integración nativa con DuckDB, permitiendo queries que combinan vectorial y SQL en un solo statement:
+
+```sql
+SELECT * FROM clips 
+WHERE narrative_function = 'PROBLEM'
+  AND subcategory LIKE 'KNEE%'
+ORDER BY vector_distance(embedding, query_embedding)
+LIMIT 10
+```
+
+**Cuándo es relevante:** Cuando la biblioteca supera los 10,000 clips y se necesita pre-filtrado por metadata para mantener latencias < 20ms.
+
+**Complejidad técnica:** Media. La migración de ChromaDB a LanceDB requiere cambiar solo `core/vector_store.py`.
+
+## FO-4 — Performance Feedback Loop
+
+**Qué es:** Integración con Meta Ads API o TikTok Ads API para traer CTR, watch time y conversion rate de cada creativo. Correlacionar estos datos con los clips usados, el hook seleccionado, y la secuencia de funciones narrativas.
+
+**Lo que aprendería el sistema:** Qué tipos de hooks tienen mayor CTR. Qué secuencias de PROBLEM→RESULT→CTA convierten mejor. Qué clips específicos aparecen consistentemente en los creativos de mejor performance.
+
+**Complejidad técnica:** Alta. Las APIs de Meta y TikTok Ads requieren autenticación OAuth y tienen rate limits estrictos. El mapeo entre creativos en el sistema y campañas en la plataforma requiere un campo manual inicialmente.
+
+## FO-5 — Auto Hook Generation
+
+**Qué es:** Dado el análisis del guion y el historial de hooks exitosos en la Hook Library, el sistema propone 3–5 variaciones del hook del guion actual con diferentes ángulos emocionales (dolor, miedo, curiosidad, sorpresa).
+
+**Implementación:** LLM con few-shot examples de hooks exitosos del productor (de `hooks_library.performance_score > 7`).
+
+**Complejidad técnica:** Baja. Extension del `GapHandler` y del `PromptIntelligenceSystem`.
+
+## FO-6 — Multi-Product Profile System
+
+**Qué es:** Perfiles de estilo por categoría de producto (salud articular, visión, capilar, vehículos). Cada perfil tiene: hooks más efectivos, clips más usados, prompts calibrados, secuencias de narrativa preferidas. Al iniciar un proyecto, el productor selecciona el perfil y el sistema pre-calibra sus recomendaciones.
+
+**Implementación:** Tabla `product_profiles` con metadata JSON. El `ClipRecommender` y el `PromptIntelligence` consultan el perfil activo para sus búsquedas históricas.
+
+## FO-7 — SaaS Architecture Migration
+
+**Cuándo tiene sentido:** Cuando el sistema tiene >3 usuarios activos o cuando el productor quiere colaborar con otros productores compartiendo la biblioteca.
+
+**Cambios arquitectónicos requeridos:**
+- SQLite → PostgreSQL (cambio en `db.py` y `pyproject.toml`, el ORM no cambia).
+- ChromaDB local → Pinecone o Weaviate Cloud (cambio en `core/vector_store.py`).
+- Filesystem local → S3 o similar para clips (cambio en `services/library_service.py`).
+- PyQt6/Tauri → Next.js web app (el backend FastAPI no cambia).
+- Auth: añadir JWT auth en FastAPI (FastAPI Users library).
+
+La arquitectura modular del AI-COS hace que ninguno de estos cambios sea un rewrite — son reemplazos de implementaciones concretas detrás de interfaces existentes.
+
+---
+
+# Appendix A — Dependency List Completa
+
+```toml
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Core AI/ML
+faster-whisper = "^1.0"
+openai = "^1.30"
+chromadb = "^0.5"
+spacy = "^3.7"
+
+# Backend
+fastapi = "^0.111"
+uvicorn = {extras = ["standard"], version = "^0.30"}
+sqlalchemy = {extras = ["asyncio"], version = "^2.0"}
+aiosqlite = "^0.20"
+alembic = "^1.13"
+pydantic = "^2.7"
+pydantic-settings = "^2.3"
+
+# Processing
+ffmpeg-python = "^0.2"    # Wrapper Python para FFmpeg
+Pillow = "^10.3"
+aiofiles = "^23.2"
+
+# Utilities
+watchdog = "^4.0"
+tenacity = "^8.3"
+rapidfuzz = "^3.9"
+structlog = "^24.2"
+pyyaml = "^6.0"
+click = "^8.1"            # CLI scripts
+
+# Frontend
+PyQt6 = "^6.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2"
+pytest-asyncio = "^0.23"
+pytest-mock = "^3.14"
+httpx = "^0.27"           # Cliente async para tests de FastAPI
+
+[tool.poetry.group.optional.dependencies]
+# Instalar con: poetry install --extras gpu
+torch = {version = "^2.3", optional = true}  # Para faster-whisper con CUDA
+```
+
+---
+
+# Appendix B — Pydantic Schemas Principales
+
+```python
+# aicos/models/schemas.py
+
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Literal
+from datetime import datetime
+from enum import Enum
+
+class Gender(str, Enum):
+    F = "F"
+    M = "M"
+    N = "N"
+    MIX = "MIX"
+    KIDS = "KIDS"
+
+class NarrativeFunction(str, Enum):
+    HOOK = "HOOK"
+    PROBLEM = "PROBLEM"
+    BENEFIT = "BENEFIT"
+    RESULT = "RESULT"
+    AUTHORITY = "AUTHORITY"
+    SOCIAL_PROOF = "SOCIAL_PROOF"
+    NATURAL = "NATURAL"
+    CTA = "CTA"
+
+class GapType(str, Enum):
+    TIKTOK_SEARCH = "tiktok_search"
+    AI_GENERATION = "ai_generation"
+    BOTH = "both"
+
+# ── Taxonomy ──────────────────────────────────────────────
+class TaxonomyResult(BaseModel):
+    gender: Optional[Gender] = None
+    narrative_function: Optional[NarrativeFunction] = None
+    subcategory: Optional[str] = None
+    context: Optional[str] = None
+    variant_number: Optional[int] = None
+    is_ai_generated: bool = False
+    is_naming_compliant: bool = False
+    raw_parts: List[str] = Field(default_factory=list)
+
+# ── Clips ─────────────────────────────────────────────────
+class ClipCreate(BaseModel):
+    filename: str
+    relative_path: str
+    absolute_path: str
+    gender: Optional[Gender] = None
+    narrative_function: Optional[NarrativeFunction] = None
+    subcategory: Optional[str] = None
+    context: Optional[str] = None
+    variant_number: Optional[int] = None
+    is_ai_generated: bool = False
+    duration_ms: Optional[int] = None
+    resolution_width: Optional[int] = None
+    resolution_height: Optional[int] = None
+    file_size_bytes: Optional[int] = None
+    file_hash: str
+    tags: List[str] = Field(default_factory=list)
+    naming_compliant: bool = False
+
+class ClipRecord(ClipCreate):
+    id: str
+    embedding_id: Optional[str] = None
+    semantic_text: Optional[str] = None
+    times_used: int = 0
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+    indexed_at: Optional[datetime] = None
+    thumbnail_path: Optional[str] = None  # Computed, not stored
+
+# ── Scenes ────────────────────────────────────────────────
+class Scene(BaseModel):
+    id: str
+    project_id: str
+    scene_index: int
+    start_ms: int
+    end_ms: int
+    duration_ms: int
+    text: str
+    concept: Optional[str] = None
+    concept_extraction_method: Optional[Literal["spacy", "llm", "manual"]] = None
+    narrative_function: Optional[NarrativeFunction] = None
+    is_hook: bool = False
+    hook_score: float = 0.0
+    gender_hint: Optional[Gender] = None
+    selected_clip_id: Optional[str] = None
+    gap_detected: bool = False
+
+# ── Recommendations ───────────────────────────────────────
+class Recommendation(BaseModel):
+    id: str
+    scene_id: str
+    clip: ClipRecord
+    similarity_score: float
+    taxonomy_boost: float
+    final_score: float
+    rank: int
+    accepted: Optional[bool] = None
+    thumbnail_path: Optional[str] = None
+
+# ── Gaps ──────────────────────────────────────────────────
+class Gap(BaseModel):
+    id: str
+    scene_id: str
+    concept: str
+    narrative_function: NarrativeFunction
+    gap_type: GapType
+    tiktok_keywords: List[str] = Field(default_factory=list)
+    ai_image_prompt: Optional[str] = None
+    ai_motion_prompt: Optional[str] = None
+    taxonomy_suggestion: Optional[str] = None
+    resolution_type: Optional[str] = None
+    resolved_clip_id: Optional[str] = None
+
+# ── Projects ──────────────────────────────────────────────
+class Project(BaseModel):
+    id: str
+    name: str
+    product_name: Optional[str] = None
+    product_category: Optional[str] = None
+    target_gender: Optional[Gender] = None
+    audio_file_path: Optional[str] = None
+    status: Literal["draft", "in_progress", "completed"] = "draft"
+    created_at: datetime
+
+class ProjectAnalysis(BaseModel):
+    project: Project
+    scenes: List[Scene]
+    recommendations: Dict[str, List[Recommendation]]  # scene_id → recommendations
+    gaps: List[Gap]
+    total_scenes: int
+    hooks_detected: int
+    gaps_count: int
+    estimated_duration_ms: int
+
+# ── Classification ────────────────────────────────────────
+class ClassificationResult(BaseModel):
+    gender: Gender
+    narrative_function: NarrativeFunction
+    subcategory: str
+    context: Optional[str] = None
+    is_ai_generated: bool = False
+    is_new_subcategory: bool = False
+    suggested_filename: str
+    suggested_folder: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    tags: List[str] = Field(default_factory=list)
+
+class ClassificationProposal(BaseModel):
+    classification: ClassificationResult
+    file_hash: str
+    metadata: "VideoMetadata"
+    thumbnail_path: str
+    taxonomy_match: "TaxonomyMatch"
+    generated_filename: str
+    target_folder: str
+
+class VideoMetadata(BaseModel):
+    duration_ms: int
+    resolution_width: int
+    resolution_height: int
+    fps: float
+    codec: str
+    file_size_bytes: int
+
+# ── Prompts ───────────────────────────────────────────────
+class PromptResult(BaseModel):
+    text: str
+    prompt_type: Literal["image", "motion"]
+    source: Literal["generated", "adapted"]
+    prompt_id: Optional[str] = None
+    base_prompt_id: Optional[str] = None
+```
+
+---
+
+*Technical Design Document v1.0 — AI Creative Operating System*  
+*Arquitectura diseñada para desarrollo incremental Cursor-first*  
+*Blueprint técnico para implementación en Python 3.11 + FastAPI + ChromaDB + PyQt6*

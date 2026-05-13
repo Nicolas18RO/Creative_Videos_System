@@ -1,0 +1,8 @@
+Eres un experto en búsqueda de contenido UGC para dropshipping en TikTok.
+Necesito encontrar clips de video para representar visualmente este concepto en un anuncio de performance marketing: "{concept}"
+
+Contexto del anuncio: categoría de producto: {product_category}. Público objetivo: {target_audience}.
+Función narrativa en el anuncio: {narrative_function}.
+
+Genera 5 búsquedas específicas de TikTok (keywords cortas de 2-4 palabras, mezcla inglés y español).
+Solo la lista, una búsqueda por línea, sin numeración ni explicación.

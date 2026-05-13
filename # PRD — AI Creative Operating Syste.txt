@@ -1,0 +1,1818 @@
+# PRD — AI Creative Operating System (AI-COS)
+### Sistema de Inteligencia Creativa Audiovisual para Producción de Ads de Dropshipping
+
+**Versión:** 2.0  
+**Fecha:** Mayo 2025  
+**Tipo de proyecto:** Local-first · AI-native · Cursor-first development  
+**Volumen de biblioteca analizado:** ~1,200+ clips catalogados  
+**Categorías de producto detectadas:** Salud/Bienestar, Vehículos, Kids, Hogar
+
+---
+
+## Tabla de Contenidos
+
+1. Executive Summary
+2. Problem Analysis
+3. System Vision
+4. MVP Definition
+5. Functional Requirements
+6. Non-Functional Requirements
+7. System Architecture
+8. Recommended Tech Stack
+9. AI Architecture
+10. Data Model Design
+11. Semantic Library Design — Análisis Real
+12. Prompt Intelligence System
+13. Auto Classification System
+14. Script-to-Visual Pipeline
+15. Cursor-First Development Strategy
+16. Development Roadmap
+17. Risks and Technical Challenges
+18. Future Opportunities
+
+---
+
+# 1. Executive Summary
+
+## Visión del Sistema
+
+El **AI Creative Operating System (AI-COS)** es un sistema de inteligencia creativa audiovisual diseñado para transformar radicalmente el flujo de producción de creativos publicitarios para dropshipping. No es un editor de video. No es un organizador de archivos. Es el sistema nervioso cognitivo de un productor creativo individual — una capa de inteligencia que actúa sobre una biblioteca de más de 1,200 clips cuidadosamente estructurada, convirtiendo conocimiento implícito en recomendaciones explícitas y automatizadas.
+
+La premisa central es que el valor real no está en cortar clips o generar subtítulos — está en la **inteligencia semántica que conecta un guion con los activos visuales correctos en el menor tiempo posible**.
+
+## Problema Principal
+
+Un productor individual genera entre 6 y 8 creativos semanales con una biblioteca de más de 1,200 clips organizados en una taxonomía semántica de 4 dimensiones (género, función narrativa, subcategoría, variante). A pesar de que la biblioteca tiene una arquitectura semántica implícita de alta calidad, el productor debe navegar esa biblioteca **completamente de memoria** para cada creativo. No existe ningún sistema que traduzca el texto del guion en rutas de búsqueda dentro de esta taxonomía.
+
+El resultado: el conocimiento más valioso del sistema — la lógica semántica de 1,200 clips — existe solo en la cabeza del productor y no se transfiere ni se escala.
+
+## Solución
+
+Un sistema modular, local-first, construido en Python, que actúa como capa de inteligencia sobre la biblioteca existente:
+
+- **Indexa** toda la biblioteca usando la semántica ya codificada en los nombres de archivos y carpetas.
+- **Analiza** guiones de audio (MP3) y los convierte en escenas con concepto semántico.
+- **Busca** los mejores clips usando embeddings vectoriales sobre la taxonomía existente.
+- **Detecta** gaps y genera keywords de TikTok y prompts de IA.
+- **Clasifica** automáticamente clips nuevos dentro de la taxonomía.
+- **Aprende** de las decisiones del productor para mejorar progresivamente.
+
+## Objetivos Cuantificables
+
+| Métrica | Actual | MVP | Largo Plazo |
+|---|---|---|---|
+| Tiempo por creativo (producto conocido) | 1.5–2 h | 45–60 min | 20–30 min |
+| Tiempo por creativo (producto nuevo) | 2–2.5 h | 60–90 min | 30–45 min |
+| Clips encontrados manualmente | ~100% | <30% | <10% |
+| Organización manual de assets nuevos | ~100% | <20% | <5% |
+
+---
+
+# 2. Problem Analysis
+
+## 2.1 Mapa de Fricción Operativa
+
+### El Problema Semántico Central
+
+La biblioteca tiene más de 1,200 clips con naming altamente descriptivo. Un archivo como `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` codifica cinco dimensiones de información: género (F=femenino), función narrativa (PROBLEM), área corporal (KNEE_PAIN), contexto (STAIRS), variante (01). Esta es una taxonomía semántica sofisticada. El problema: **no existe ningún motor que la consulte**.
+
+Cuando el guion dice "muchas personas sufren al bajar escaleras por el dolor de rodilla", el productor debe:
+1. Recordar que tiene clips de rodilla en `F/PROBLEM/KNEE_PAIN/`.
+2. Recordar que también hay en `M/PROBLEM/BODY/KNEE_PAIN/` para variantes masculinas.
+3. Recordar que hay un clip específico `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` que es exactamente lo que necesita.
+4. Navegar manualmente hasta ese archivo.
+
+Si el productor no recuerda el clip de escaleras, ese clip no existe operativamente. El AI-COS convierte esa memoria episódica en un índice consultable.
+
+### Problemas Operativos
+
+**Búsqueda de clips:** Para un guion con 15–20 escenas, cada búsqueda parte de cero. En productos nuevos sin clips previos, el productor recurre a TikTok: buscar keywords → descargar → limpiar. Son 4–6 pasos adicionales por cada clip faltante.
+
+**Segmentación manual del guion:** El productor escucha el audio en segmentos de 2–3 segundos y decide manualmente qué concepto visual corresponde. Este proceso no tiene apoyo de ninguna herramienta.
+
+**Generación de escenas IA:** El loop prompt → imagen → corrección → movimiento tiene demasiadas iteraciones manuales, especialmente para escenas de animaciones médicas o científicas donde el realismo es crítico.
+
+**Pipeline de entrega post-edición:** El flujo manual de cache de CapCut → copiar → mover → renombrar es completamente automatizable y es una fuente frecuente de errores y tiempo perdido.
+
+### Problemas Organizacionales
+
+**Clips nuevos sin clasificar:** Cada clip descargado de TikTok o generado con IA debe ser manualmente nombrado, clasificado y ubicado en la carpeta correcta. Sin este paso, la biblioteca se deteriora. Con el AI-COS, este proceso es automático.
+
+**Inconsistencias de naming:** Existen evidencias en la biblioteca de inconsistencias ocasionales. Por ejemplo, `M_BENEFIT_TAKING_PHILLS_01.mp4` usa "PHILLS" mientras en otros lugares aparece como "PILLS". Estas inconsistencias fragmentan el índice semántico. El Auto Organizer corregirá estas inconsistencias progresivamente.
+
+**Clips fuera de taxonomía:** En `M/AUTHORITY/CHIROPRACTOR_TALKING/` existe un archivo `clearzal pain relieving gel 03(12)-1.mp4` — nombre de descarga de TikTok sin procesar, fuera del sistema de naming. Hay varios casos similares que el indexador debe detectar y marcar para re-clasificación.
+
+**Archivo de sonidos (SE):** La carpeta `SE/` contiene efectos de sonido (crying women, pain men/women) que son assets de audio complementarios. No son clips de video pero son parte del sistema creativo. El data model debe incluirlos.
+
+### La Brecha de Cobertura por Categoría de Producto
+
+Analizando la biblioteca, se pueden detectar áreas con cobertura densa y áreas con cobertura escasa:
+
+**Cobertura densa (>10 clips por subcategoría):**
+- Knee pain (F y M), back pain, urinary incontinence, eye problem, weight problem (fat), stress/overwhelm, vision problem, skin recovery (wrinkles), hair problem (M)
+
+**Cobertura media (5–10 clips):**
+- Shoulder problem, sleeping problem, abdomen problem, walking pain, physical transformation, social confidence, daily routine variants
+
+**Cobertura escasa (<5 clips):**
+- Kids (3 clips totales), MIX social proof, CTA (casi vacío en M y MIX), algunos hooks de nicho
+
+Esta mapa de cobertura es información estratégica: cuando el Gap Detector actúe, debe priorizar sugerencias de relleno para las áreas de baja cobertura que corresponden a productos frecuentes.
+
+---
+
+# 3. System Vision
+
+## 3.1 El Sistema Ideal
+
+El flujo ideal comienza con un archivo MP3. El productor arrastra el audio a la interfaz del AI-COS. En menos de 60 segundos el sistema ha:
+
+1. Transcrito el audio con timestamps precisos (Whisper).
+2. Segmentado el transcript en escenas de 2–3 segundos.
+3. Identificado el hook principal (primeros 5–7 segundos) y hooks alternativos.
+4. Consultado la biblioteca semántica y encontrado los mejores clips para cada escena, usando la taxonomía real: género del clip recomendado, función narrativa (HOOK/PROBLEM/BENEFIT/RESULT/AUTHORITY), área temática.
+5. Señalado los gaps con score semántico bajo.
+6. Propuesto keywords de TikTok y prompts de IA para los gaps.
+
+El productor revisa las recomendaciones en un dashboard visual — thumbnails de clips con scores, organizados por escena — y dedica su tiempo a **curaduría creativa**, no a búsqueda manual.
+
+## 3.2 La Taxonomía Como Motor de Búsqueda
+
+El insight más importante para el diseño del sistema es que **la taxonomía de la biblioteca ya es un sistema de búsqueda — solo falta el motor**. Los cinco ejes de la taxonomía son:
+
+- **Eje 1 — Género:** F (femenino), M (masculino), N (neutro/objetos), MIX (mixto), KIDS
+- **Eje 2 — Función narrativa:** HOOK, PROBLEM, BENEFIT, RESULT, AUTHORITY, SOCIAL_PROOF, CTA, NATURAL
+- **Eje 3 — Subcategoría temática:** KNEE_PAIN, BACK_PAIN, DAILY_ROUTINE, ANIMATION, etc.
+- **Eje 4 — Contexto específico:** STAIRS, POSTURE, INFLAMMATION, IA, etc.
+- **Eje 5 — Variante:** número secuencial 01, 02, 03...
+
+El sistema de búsqueda del AI-COS debe aprender a mapear conceptos del guion a estos cinco ejes, y combinarlo con búsqueda vectorial para capturar relaciones semánticas que la taxonomía estricta no puede expresar.
+
+## 3.3 Evolución del Sistema
+
+El AI-COS aprende con cada uso. Cada decisión del productor (aceptar/rechazar una recomendación) calibra el motor de búsqueda hacia sus preferencias específicas. Con el tiempo, el sistema aprende que para un guion sobre "dolor de rodilla al caminar" el productor prefiere clips de la subcategoría `WALK_PAIN` sobre `KNEE_PAIN` puro, o que prefiere clips femeninos para ciertos tipos de producto.
+
+---
+
+# 4. MVP Definition
+
+## 4.1 Filosofía del MVP
+
+El MVP debe ser **operable y valioso desde el primer día**. El criterio de éxito es simple: ¿el productor lo usa en su próxima sesión de trabajo real y ahorra tiempo?
+
+Esto significa atacar el cuello de botella más doloroso — la búsqueda semántica de clips — con la menor complejidad técnica posible.
+
+## 4.2 Módulos del MVP
+
+### Módulo M1 — Script Analyzer
+**Input:** Archivo MP3  
+**Output:** Transcript con timestamps + escenas segmentadas + hooks detectados
+
+Transcribe el audio con Whisper, divide en ventanas de 2–3 segundos respetando boundaries de oración, detecta el hook en la ventana inicial.
+
+### Módulo M2 — Semantic Clip Search
+**Input:** Concepto de escena (texto)  
+**Output:** Top-5 clips rankeados por relevancia semántica
+
+Vectoriza cada clip de la biblioteca usando el texto compuesto de su ruta+nombre. En búsqueda, convierte el concepto de la escena en embedding y recupera los N clips más similares de ChromaDB. Incorpora boosting por función narrativa: si la escena es el hook, priorizar clips de la carpeta HOOK; si describe un problema, priorizar PROBLEM; si describe el resultado, priorizar RESULT.
+
+### Módulo M3 — Gap Detector & Suggestion Engine
+**Input:** Escena + resultados de búsqueda  
+**Output:** Gaps + keywords TikTok + prompts IA
+
+Cuando el score del mejor clip es bajo, activa el flujo de recuperación: genera keywords de TikTok contextualizadas y, para escenas de tipo AUTHORITY o animaciones científicas, genera prompts de imagen y movimiento IA.
+
+### Módulo M4 — Auto Clip Organizer
+**Input:** Clips nuevos en carpeta `incoming/`  
+**Output:** Clips clasificados, renombrados según la convención de la biblioteca, indexados
+
+Analiza cada clip nuevo con visión computacional, determina los 5 ejes de la taxonomía (género, función, subcategoría, contexto, número), genera el nombre de archivo correcto, mueve a la carpeta correspondiente, e indexa en ChromaDB.
+
+## 4.3 Qué NO construir en el MVP
+
+- Integración directa con CapCut (no tiene API pública).
+- Generación automática de subtítulos.
+- Timeline automation.
+- Interface web compleja (dashboard desktop funcional es suficiente).
+- Sistema de aprendizaje con feedback loop (Fase 2).
+- Multi-usuario o sincronización cloud.
+
+---
+
+# 5. Functional Requirements
+
+## FR-01: Audio Transcription (M1)
+
+**Input:** Archivo MP3 de voz en off.  
+**Proceso:** Whisper (`faster-whisper`, modelo `small` o `medium`). Parámetro `word_timestamps=True`.  
+**Output:** Objeto `Transcript`:
+```
+Transcript {
+  full_text: str
+  language: str
+  segments: List[Segment]  # {start_ms, end_ms, text, words}
+  duration_ms: int
+  audio_path: str
+}
+```
+**Edge cases:**
+- Audio con música de fondo: Whisper degrada. Documentar; considerar separación de fuentes en Fase 2.
+- Silencio largo al inicio: ignorar segmentos con `text.strip() == ""`.
+- Español con términos médicos técnicos: el modelo `medium` tiene mejor cobertura de vocabulario técnico en español.
+
+## FR-02: Scene Segmentation (M1)
+
+**Input:** Transcript con timestamps por palabra.  
+**Proceso:** Acumular palabras hasta alcanzar ~2,500ms. Al superar el umbral, buscar el boundary de oración más cercano (punto, coma, pausa silenciosa >400ms entre palabras). Cortar ahí.
+
+**Lógica de hook detection:**
+- Primarios: primeros 7,000ms del audio son la ventana de hook.
+- Hook scorer: evalúa presencia de pregunta directa (+0.3), palabras de alta carga emocional como "dolor", "secreto", "error", "nadie sabe", "años" (+0.1 por palabra), tono imperativo (+0.2).
+- Las primeras 2–3 escenas dentro de la ventana de hook se marcan como `is_hook=True`.
+
+**Output:** Lista de `Scene`:
+```
+Scene {
+  scene_id: str          # UUID
+  scene_index: int
+  start_ms: int
+  end_ms: int
+  duration_ms: int
+  text: str
+  concept: str           # extraído del texto
+  narrative_function: str  # HOOK | PROBLEM | BENEFIT | RESULT | AUTHORITY | SOCIAL_PROOF | CTA
+  is_hook: bool
+  hook_score: float
+  gender_hint: Optional[str]  # F | M | N | MIX | null
+}
+```
+
+**Inferencia de `narrative_function`:** Heurística basada en posición en el audio + palabras clave:
+- Primeros 15%: HOOK
+- Menciones de dolor/problema: PROBLEM
+- Menciones de solución/producto/beneficio: BENEFIT
+- Menciones de resultado/transformación: RESULT
+- Menciones de doctor/estudio/laboratorio: AUTHORITY
+- Últimos 10% con call to action: CTA
+
+## FR-03: Concept Extraction (M1)
+
+**Input:** `scene.text`  
+**Proceso:** Para textos claros con noun phrases detectables (spaCy noun chunker en español), extraer el concepto directamente. Para textos abstractos o muy cortos, llamada lightweight a LLM:
+
+```
+Prompt: "Del siguiente fragmento de guion publicitario, extrae el concepto visual principal en 2-5 palabras en inglés (para búsqueda semántica). Solo el concepto, sin explicación: '{scene_text}'"
+```
+
+**Output:** `concept: str` (2–5 palabras en inglés, para alignment con los nombres de archivo en inglés de la biblioteca).
+
+**Decisión de diseño crítica:** Los nombres de archivo y carpetas están en inglés (`KNEE_PAIN`, `BACK_PAIN`, `DAILY_ROUTINE`). El guion está en español. La extracción del concepto traduce implícitamente al dominio semántico de la biblioteca.
+
+## FR-04: Semantic Embedding & Indexing (M2)
+
+**Proceso de indexado (bootstrap + incremental):**
+
+Para cada clip, construir el texto descriptivo compuesto:
+```python
+def build_clip_text(clip: Clip) -> str:
+    parts = []
+    
+    # Género (contexto de persona)
+    gender_map = {"F": "woman female", "M": "man male", "N": "neutral object", 
+                  "MIX": "couple mixed group", "KIDS": "child kid"}
+    if clip.gender_prefix in gender_map:
+        parts.append(gender_map[clip.gender_prefix])
+    
+    # Función narrativa
+    function_map = {
+        "HOOK": "hook attention grabbing opening problem reveal",
+        "PROBLEM": "problem pain symptom suffering complaint",
+        "BENEFIT": "benefit daily life activity normal routine solution",
+        "RESULT": "result recovery improvement transformation success",
+        "AUTHORITY": "authority doctor medical laboratory science animation",
+        "SOCIAL_PROOF": "testimonial social proof review satisfied customer",
+        "NATURAL": "natural ingredient herb extract source",
+        "CTA": "call to action buy purchase order"
+    }
+    parts.append(function_map.get(clip.narrative_function, clip.narrative_function))
+    
+    # Subcategoría (el concepto principal)
+    subcategory_cleaned = clip.subcategory.replace("_", " ").lower()
+    parts.append(subcategory_cleaned)
+    
+    # Contexto específico
+    if clip.context:
+        context_cleaned = clip.context.replace("_", " ").lower()
+        parts.append(context_cleaned)
+    
+    # Tags adicionales derivados del nombre
+    parts.append(clip.filename_tags)  # palabras del filename procesadas
+    
+    return " ".join(parts)
+```
+
+Ejemplo para `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4`:
+```
+"woman female | problem pain symptom suffering | knee pain | stairs going up | knee pain stairs"
+```
+
+Ejemplo para `N_AUTHORITY_ANIMATION_KNEE_ANIMATION_03.mp4`:
+```
+"neutral object | authority doctor medical laboratory science animation | animation | knee animation | knee 3d medical visualization"
+```
+
+**Proceso de búsqueda:**
+1. Tomar `concept` + `narrative_function` de la escena.
+2. Construir query: `"{narrative_function_expanded} {concept}"`.
+3. Vectorizar → ChromaDB query con `n_results=15`.
+4. Re-rankear por: score de cosine similarity (peso 0.7) + match de narrative_function exacto (boost +0.2) + match de gender_hint (boost +0.1).
+5. Retornar top-5 con scores finales.
+
+## FR-05: Clip Recommendation Display (M2)
+
+**Output por escena:**
+- Thumbnail del frame central (generado via FFmpeg, cacheado en `~/.aicos/thumbnails/`).
+- Ruta relativa dentro de la biblioteca.
+- Función narrativa del clip (HOOK / PROBLEM / RESULT / etc.).
+- Género del clip (F / M / N / MIX / KIDS).
+- Score de relevancia (0.0–1.0).
+- Número de variantes disponibles en la misma subcategoría.
+
+**Interacciones del usuario:**
+- Aceptar recomendación top → registrar en `recommendations` como `accepted=True`.
+- Seleccionar alternativa (top-2 a top-5) → registrar selección.
+- Marcar como gap → activar FR-06.
+- Solicitar más variantes → expandir búsqueda a n_results=20.
+
+## FR-06: Gap Detection & TikTok Keyword Generation (M3)
+
+**Trigger:** Score del mejor clip < 0.65 (configurable), O el productor marca manualmente como gap.
+
+**Proceso de generación de keywords:**
+```
+System: Eres un experto en búsqueda de contenido UGC para dropshipping en TikTok. 
+Conoces qué tipo de clips de personas reales son más fáciles de encontrar en la plataforma.
+
+User: Necesito encontrar en TikTok clips de video para representar visualmente este concepto 
+en un anuncio de performance marketing: "{concept}"
+Contexto del anuncio: {product_category}, público objetivo: {target_audience}
+Genera 5 búsquedas específicas de TikTok (keywords cortas de 2-4 palabras, en inglés y español). 
+Solo la lista, sin explicación.
+```
+
+**Proceso de detección de tipo de gap:**
+- Si `narrative_function == "AUTHORITY"` y el concepto implica anatomía/ciencia: sugerir animación IA.
+- Si el concepto es abstracto o difícil de encontrar en TikTok: sugerir generación de imagen IA.
+- Si el concepto es cotidiano y específico: solo keywords TikTok.
+
+**Output:**
+```
+Gap {
+  scene_id: str
+  concept: str
+  narrative_function: str
+  gap_type: str  # "tiktok_search" | "ai_generation" | "both"
+  tiktok_keywords: List[str]
+  ai_image_prompt: Optional[str]
+  ai_motion_prompt: Optional[str]
+  taxonomy_suggestion: str  # dónde debería vivir el clip en la biblioteca
+}
+```
+
+## FR-07: AI Prompt Generation for Gaps (M3)
+
+**Trigger:** Gap con `gap_type in ["ai_generation", "both"]`.
+
+**Prompt de imagen (para Gemini/Midjourney):**
+```
+System: Eres un experto en generar prompts para imágenes IA usadas en anuncios de performance 
+marketing de dropshipping. El estilo es orgánico, realista, no invasivo, como contenido UGC real.
+
+User: Genera un prompt de imagen IA para este concepto: "{concept}"
+Tipo de escena: {narrative_function}
+Género del sujeto: {gender_preference}
+Estilo: realista, orgánico, iluminación natural, sin estética de stock photo
+Formato de salida: un solo prompt en inglés, listo para copiar
+```
+
+**Prompt de movimiento (para Grok Imagine/RunwayML):**
+```
+Basado en el siguiente frame/imagen, genera un prompt de movimiento suave y natural para: "{concept}"
+Duración: 3-4 segundos. Movimiento: sutil, orgánico, sin transiciones abruptas.
+```
+
+## FR-08: Auto Clip Organizer — Taxonomy Mapping (M4)
+
+**Proceso de análisis visual con GPT-4o Vision:**
+```json
+{
+  "system": "Eres un experto en clasificación de clips de video para producción de anuncios de dropshipping. Conoces una taxonomía específica de 5 ejes: gender (F/M/N/MIX/KIDS), narrative_function (HOOK/PROBLEM/BENEFIT/RESULT/AUTHORITY/SOCIAL_PROOF/NATURAL/CTA), subcategory (tema específico), context (detalle adicional), variant_number.",
+  "user": "Analiza este frame de video y clasifícalo según la taxonomía. Responde SOLO en JSON:\n{\n  'gender': 'F|M|N|MIX|KIDS',\n  'narrative_function': 'HOOK|PROBLEM|BENEFIT|RESULT|AUTHORITY|SOCIAL_PROOF|NATURAL|CTA',\n  'subcategory': 'NOMBRE_EN_MAYUSCULAS',\n  'context': 'CONTEXTO_ESPECIFICO_O_NULL',\n  'suggested_filename': 'GENERO_FUNCION_SUBCATEGORIA_CONTEXTO_01.mp4',\n  'suggested_folder': 'ruta/relativa/en/biblioteca',\n  'confidence': 0.0-1.0,\n  'tags': ['tag1', 'tag2']\n}"
+}
+```
+
+**Proceso completo:**
+1. Detectar nuevo archivo en `incoming/`.
+2. Calcular SHA256 → verificar deduplicación.
+3. Extraer frame central con FFmpeg.
+4. Enviar a Vision API → recibir clasificación JSON.
+5. Si `confidence >= 0.75`: proponer al usuario (modo default) o aplicar directamente (modo auto).
+6. Si `confidence < 0.75`: mover a `incoming/needs_review/`, notificar al usuario.
+7. Usuario confirma o corrige → mover archivo, crear registro SQLite, vectorizar, insertar ChromaDB.
+
+**Manejo especial de los archivos existentes fuera de taxonomía:**
+Identificar clips en la biblioteca actual que no siguen la convención de naming (como `clearzal pain relieving gel 03(12)-1.mp4` en `M/AUTHORITY/CHIROPRACTOR_TALKING/`). Estos se listan en un reporte inicial `needs_reclassification.txt` para que el productor los procese a través de M4.
+
+## FR-09: Hook Library Integration
+
+**Propósito:** La biblioteca ya tiene una categoría `HOOK` explícita en todos los géneros. El sistema debe indexar estos clips con peso especial y, cuando detecte el hook de un guion, sugerir primero clips de las subcarpetas HOOK antes que PROBLEM u otras.
+
+**Hook subcategorías existentes en biblioteca:**
+- F/HOOK: BACK_PAIN, BAD_SMELL, CELLULITIS, CLEANING, DISAGREEMENT, DRINKING, EYE_PROBLEM, HAND_PROBLEM, HEAD_PROBLEM, HIP_PAIN, IDEAL_PHYSICAL_STATE, IDEAL_SKIN, KNEE_PROBLEM, NECK_PAIN, SEXUAL_PHYSICAL, SKIN_PROBLEM, SOCIAL_CONFIDENCE, URINARY_INCONTINENCE, WEIGHT_PROBLEM
+- M/HOOK: BODY, CRAMP_PAIN, DRINKING, EYE_PROBLEM, FEET_PAIN, HAIR_PROBLEM, HAND_PAIN, IDEAL_PHYSICAL, KNEE_PAIN, PAIN_BACK, SEXUAL, SHOULDER_PAIN, SLEEPING_PROBLEM, STOMACH_PAIN
+- N/HOOK: ANATOMY (BODY_PROBLEM, BONE, BRAIN, HAND, LIVER, SPINE), BEVERAGE, FAT, MICROBIO, PENIS, SURGERY (HAND, KNEE, SHOULDER), VEHICLE (ENGINE, FIRE, GASOLINE)
+
+Esta cobertura de hooks debe ser el primer lugar donde el sistema busca para escenas marcadas como `is_hook=True`.
+
+## FR-10: Sound Effects (SE) Integration
+
+La carpeta `SE/` contiene efectos de sonido (`.aac`): `SE_CRYING_WOMEN_01.aac`, `SE_PAIN_MEN_01-03.aac`, `SE_PAIN_WOMEN_01.aac`. Estos son assets de audio complementarios que acompañan clips de video.
+
+El sistema debe indexarlos como assets de tipo `sound_effect` con sus propias categorías, y cuando recomiende un clip de tipo PROBLEM con emoción de dolor, puede sugerir el sound effect correspondiente.
+
+---
+
+# 6. Non-Functional Requirements
+
+## Performance
+
+- Transcripción de MP3 de 3 minutos: < 45 seg (faster-whisper small en CPU i5 12th Gen).
+- Búsqueda semántica por escena sobre 1,200 clips: < 100ms (ChromaDB local).
+- Indexado incremental de clip nuevo: < 8 segundos (thumbnail + embedding + SQLite + ChromaDB).
+- Re-indexado completo de biblioteca (~1,200 clips): < 5 minutos.
+- Análisis visual de clip nuevo (M4): < 20 segundos por clip.
+- Carga de thumbnails en dashboard: < 200ms por lote de 10.
+
+## Escalabilidad
+
+El sistema debe operar sin degradación con:
+- Hasta 10,000 clips en biblioteca (horizonte 3 años).
+- Hasta 500 proyectos procesados.
+- Hasta 2,000 prompts en Prompt Intelligence System.
+
+## Modularidad
+
+Cada módulo (M1–M4) es independientemente testeable y reemplazable. Los módulos se comunican únicamente vía Pydantic models. No hay estado compartido mutable entre módulos.
+
+## Mantenibilidad
+
+- Todos los parámetros configurables en `config.yaml` central.
+- Logging estructurado en JSON en todos los módulos.
+- Tests unitarios para funciones críticas.
+- Docstrings Google style en todas las funciones públicas.
+- `ARCHITECTURE.md` como documento vivo de decisiones.
+
+## Almacenamiento
+
+- ChromaDB y SQLite en SSD principal (nunca HDD externo).
+- Thumbnails cacheados en `~/.aicos/thumbnails/`.
+- Los clips de biblioteca pueden estar en cualquier disco — el sistema trabaja con rutas absolutas.
+- La carpeta `incoming/` puede estar en cualquier disco configurado por el usuario.
+
+## UX
+
+- Dashboard responde en < 100ms para acciones de UI.
+- Todas las operaciones largas tienen progress indicator visible.
+- El usuario nunca interactúa con conceptos técnicos como "embeddings" o "vectores".
+- El sistema no requiere reemplazar ninguna herramienta existente (CapCut sigue siendo el editor).
+
+---
+
+# 7. System Architecture
+
+## 7.1 Visión General — Tres Capas
+
+**Capa de Procesamiento:** Transforma inputs en representaciones internas. Whisper para transcripción, FFmpeg para extracción de frames y metadata, modelo de embeddings para vectorización.
+
+**Capa de Inteligencia:** El núcleo semántico. ChromaDB para búsqueda vectorial, SQLite para metadata relacional, motor de recomendación con boosting por taxonomía, detector de gaps, clasificador automático, generador de prompts.
+
+**Capa de Presentación:** Dashboard de escritorio (PyQt6 en MVP, Tauri en Fase 4) que consume una FastAPI local en `localhost:8000`.
+
+## 7.2 Flujo de Datos Principal
+
+```
+MP3 Audio
+  └─→ [M1: Script Analyzer]
+        ├─→ Whisper → Transcript
+        ├─→ Segmenter → Scenes[]
+        └─→ ConceptExtractor → Scene.concept[]
+              └─→ [M2: Semantic Search]
+                    ├─→ Embedder → query_vector
+                    ├─→ ChromaDB → top-15 candidates
+                    ├─→ TaxonomyBooster → re-ranked top-5
+                    └─→ Recommendations[]
+                          └─→ [M3: Gap Handler]
+                                ├─→ GapDetector → Gaps[]
+                                ├─→ LLMService → TikTok keywords
+                                └─→ LLMService → AI prompts
+
+Incoming Clip
+  └─→ [M4: Auto Organizer]
+        ├─→ FFmpegService → thumbnail + metadata
+        ├─→ VisionService → taxonomy classification
+        ├─→ LibraryService → move + rename
+        ├─→ SQLite → insert clip record
+        └─→ ChromaDB → insert embedding
+```
+
+## 7.3 Estructura de Módulos
+
+```
+aicos/
+├── config.yaml
+├── .cursorrules
+├── ARCHITECTURE.md
+├── pyproject.toml
+│
+├── aicos/
+│   ├── core/
+│   │   ├── transcriber.py      # Wrapper faster-whisper
+│   │   ├── segmenter.py        # Segmentación + hook detection
+│   │   ├── concept_extractor.py # Extracción de concepto semántico
+│   │   ├── embedder.py         # Wrapper OpenAI embeddings
+│   │   └── vector_store.py     # Abstracción ChromaDB
+│   │
+│   ├── modules/
+│   │   ├── script_analyzer.py  # Orquesta M1: transcriber+segmenter+extractor
+│   │   ├── clip_recommender.py # Orquesta M2: embedder+vectorstore+booster
+│   │   ├── gap_handler.py      # Orquesta M3: detector+llm+prompts
+│   │   └── clip_organizer.py   # Orquesta M4: watcher+vision+naming+indexing
+│   │
+│   ├── services/
+│   │   ├── llm_service.py      # Abstracción OpenAI/Anthropic
+│   │   ├── vision_service.py   # Abstracción GPT-4o Vision
+│   │   ├── ffmpeg_service.py   # Wrapper FFmpeg
+│   │   └── library_service.py  # CRUD biblioteca + taxonomía
+│   │
+│   ├── taxonomy/
+│   │   ├── parser.py           # Parsear nombres de archivo → 5 ejes
+│   │   ├── builder.py          # Construir nombre desde 5 ejes
+│   │   ├── text_builder.py     # Construir texto semántico para embedding
+│   │   └── constants.py        # Mapas de géneros, funciones, subcategorías
+│   │
+│   ├── api/
+│   │   ├── main.py             # FastAPI app
+│   │   └── routers/
+│   │       ├── analyze.py      # POST /analyze
+│   │       ├── search.py       # POST /search
+│   │       ├── gaps.py         # GET /gaps/{project_id}
+│   │       ├── library.py      # GET/POST /library
+│   │       └── organize.py     # POST /organize
+│   │
+│   ├── models/
+│   │   └── schemas.py          # Todos los Pydantic models
+│   │
+│   ├── database/
+│   │   ├── db.py               # SQLite connection + session
+│   │   └── migrations/
+│   │
+│   ├── prompts/                # Prompt templates como .txt
+│   │   ├── concept_extraction.txt
+│   │   ├── gap_keywords.txt
+│   │   ├── image_prompt.txt
+│   │   ├── motion_prompt.txt
+│   │   └── vision_classify.txt
+│   │
+│   └── frontend/
+│       └── app.py              # PyQt6 dashboard
+│
+└── tests/
+    ├── test_transcriber.py
+    ├── test_segmenter.py
+    ├── test_taxonomy_parser.py
+    ├── test_recommender.py
+    └── fixtures/
+        ├── sample_audio.mp3
+        └── sample_clips/
+```
+
+## 7.4 El Módulo `taxonomy/` — Pieza Central
+
+Este módulo es exclusivo de este proyecto y no existe en ningún framework genérico. Es la pieza que convierte la taxonomía de nombres de archivo en inteligencia consultable.
+
+**`parser.py`:** Dado un filename como `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4`, extrae:
+```python
+{
+  "gender": "F",
+  "narrative_function": "PROBLEM",
+  "subcategory": "KNEE_PAIN",
+  "context": "STAIRS",
+  "variant": 1,
+  "is_ia": False
+}
+```
+
+Maneja casos especiales: `IA` al final del nombre indica clip generado con IA, `OLDWOMAN`/`OLDMAN` como contexto de edad, prefijos mixtos como `NEUTRAL` vs `N`.
+
+**`text_builder.py`:** Convierte los 5 ejes en texto semántico enriquecido para embedding. Este es el componente más crítico para la calidad de las búsquedas.
+
+## 7.5 Persistencia — Dos Stores Complementarios
+
+**SQLite** (`~/.aicos/aicos.db`): Fuente de verdad. Toda la metadata relacional de clips, proyectos, escenas, recomendaciones, gaps, prompts, hooks.
+
+**ChromaDB** (`~/.aicos/vector_store/`): Índice derivado. Embeddings de clips y escenas. Puede reconstruirse en cualquier momento desde SQLite + archivos de clips. Si ChromaDB se corrompe, `aicos reindex` lo reconstruye.
+
+**Regla de consistencia:** Toda operación que modifica la biblioteca (nuevo clip, reclasificación) actualiza SQLite primero y ChromaDB segundo. Si ChromaDB falla, SQLite es coherente y el reindex puede recuperar el estado.
+
+---
+
+# 8. Recommended Tech Stack
+
+## Python 3.11+ — Lenguaje Principal
+
+El ecosistema de AI/ML en Python es incomparable para este proyecto. Whisper, ChromaDB, OpenAI SDK, spaCy, watchdog, FFmpeg-python — todo existe como librería madura. Intentar esto en otro lenguaje es luchar contra la corriente.
+
+## faster-whisper — Transcripción Local
+
+La implementación en CTranslate2 de Whisper es 2–4x más rápida que la referencia de OpenAI con el mismo modelo. El modelo `small` en CPU i5 12th Gen procesa ~1 minuto de audio en ~15–20 segundos. El modelo `medium` da mejor precisión para vocabulario médico/técnico en español a costo de ~2x más tiempo.
+
+**Por qué no la API de Whisper de OpenAI:** Requiere subir el audio a servidores externos. Para producción con contenido propietario, la privacidad importa. Local-first es la decisión correcta para el MVP.
+
+## ChromaDB — Vector Database
+
+Sin servidor, sin Docker, sin configuración. Un `pip install chromadb` y funciona. Persiste en disco automáticamente. Para la escala de este proyecto (hasta 10,000 clips) es más que suficiente y tiene latencias < 50ms en búsquedas sobre 5,000 documentos.
+
+**Alternativa futura:** LanceDB si se necesita escalar a millones de clips o queries híbridas vectorial+SQL más complejas.
+
+## OpenAI `text-embedding-3-small` — Embeddings
+
+**Por qué este modelo específico:** Los nombres de archivo de la biblioteca están en inglés (`KNEE_PAIN`, `URINARY_INCONTINENCE`, `DAILY_ROUTINE`). Los guiones están en español. El modelo `text-embedding-3-small` tiene excelente cobertura bilingüe español-inglés y el dominio de salud/wellness está bien representado en su training data.
+
+**Costo:** Para una biblioteca de 1,200 clips, el indexado inicial cuesta aproximadamente $0.01 USD (1,200 textos × ~100 tokens × $0.00002/token). Prácticamente gratuito.
+
+## spaCy (es_core_news_sm) — NLP para Extracción de Conceptos
+
+Para extraer noun phrases de los segmentos del guion en español sin llamar a un LLM. Más rápido y más barato que LLM para casos simples. El LLM se reserva para conceptos abstractos que spaCy no puede resolver.
+
+## FFmpeg — Procesamiento de Video
+
+Estándar industrial. Extracción de frames, metadata de video (duración, resolución, codec), conversión de formatos. Se integra vía `subprocess` o wrapper `ffmpeg-python`.
+
+## FastAPI + uvicorn — API Interna
+
+El frontend necesita comunicarse con el backend. FastAPI local en `localhost:8000` es la opción más limpia: async nativo, type-safe con Pydantic, documentación automática. Permite futura separación del frontend en Tauri sin cambiar el backend.
+
+## SQLite + SQLAlchemy — Metadata Store
+
+Local-first, sin servidor, stdlib de Python. Para la escala de este proyecto es más que suficiente. SQLAlchemy como ORM permite migración futura a PostgreSQL sin cambiar el código de la aplicación. Alembic para migraciones de schema.
+
+## watchdog — File System Watcher (M4)
+
+Librería Python para observar cambios en el filesystem. Activa M4 automáticamente cuando aparece un nuevo archivo en `incoming/`.
+
+## PyQt6 — Frontend MVP
+
+La opción más rápida para un dashboard de escritorio funcional en Python. Widgets maduros, rendimiento nativo, soporte para thumbnails, listas con scroll. No requiere aprender JavaScript para el MVP.
+
+**Alternativa Fase 4:** Tauri (Rust + Web UI) para una interfaz más moderna y distribuible.
+
+---
+
+# 9. AI Architecture
+
+## 9.1 Embedding Strategy — Taxonomía Como Texto Semántico
+
+La calidad del sistema de búsqueda depende directamente de la calidad del texto que se vectoriza para cada clip. La estrategia central es **convertir la taxonomía de 5 ejes en un texto semántico enriquecido** que capture el significado del clip de forma que el embedding sea informativo.
+
+**Texto crudo (malo):** `"F_PROBLEM_KNEE_PAIN_STAIRS_01"`  
+**Texto procesado (bueno):** `"woman female | problem pain symptom suffering | knee pain articular joint pain | stairs going up effort | knee pain stairs woman symptom"`
+
+La diferencia: el texto procesado incluye sinónimos y expansiones que mejoran el recall semántico. Una búsqueda por "dolor al subir escaleras" encontrará este clip porque "stairs" y "going up" y "effort" están en el texto vectorizado.
+
+**Expansiones semánticas por función narrativa:**
+```python
+NARRATIVE_EXPANSIONS = {
+    "HOOK": "hook attention grabbing opening shocking reveal problem teaser",
+    "PROBLEM": "problem pain symptom suffering complaint issue complaint difficulty",
+    "BENEFIT": "benefit daily life activity normal routine improvement solution using",
+    "RESULT": "result recovery improvement transformation success after before after",
+    "AUTHORITY": "authority credibility trust doctor medical laboratory science proof",
+    "SOCIAL_PROOF": "testimonial review satisfied customer real person experience",
+    "NATURAL": "natural ingredient herb botanical extract source raw organic",
+    "CTA": "buy purchase order now call to action limited offer"
+}
+```
+
+**Expansiones por subcategoría relevante:**
+Para subcategorías con alta frecuencia en la biblioteca, agregar sinónimos médicos y coloquiales:
+```python
+SUBCATEGORY_EXPANSIONS = {
+    "KNEE_PAIN": "knee joint articular cartilage pain ache hurt walk stairs",
+    "BACK_PAIN": "back spine lumbar pain ache posture herniated disc",
+    "URINARY_INCONTINENCE": "bladder urinary leakage incontinence pelvic floor sneeze laugh",
+    "WEIGHT_PROBLEM": "overweight obesity fat body weight loss diet",
+    "SLEEPING_PROBLEM": "insomnia sleep disorder fatigue tired rest",
+    "EYE_PROBLEM": "vision eye sight blur driving computer screen fatigue",
+    # ... etc.
+}
+```
+
+## 9.2 Taxonomy-Aware Retrieval
+
+La búsqueda no es solo vectorial pura. El sistema aplica un **boosting de taxonomía** basado en la función narrativa detectada en la escena:
+
+```python
+def taxonomy_boost(candidates: List[SearchResult], scene: Scene) -> List[SearchResult]:
+    for result in candidates:
+        boost = 0.0
+        
+        # Boost por función narrativa matching
+        if result.clip.narrative_function == scene.narrative_function:
+            boost += 0.20
+        
+        # Boost por género si hay hint
+        if scene.gender_hint and result.clip.gender == scene.gender_hint:
+            boost += 0.10
+        
+        # Boost para hooks: preferir clips de carpeta HOOK
+        if scene.is_hook and result.clip.narrative_function == "HOOK":
+            boost += 0.25
+        
+        # Penalty para clips ya usados en este proyecto
+        if result.clip.id in scene.project.used_clip_ids:
+            boost -= 0.15
+        
+        result.final_score = min(1.0, result.similarity_score + boost)
+    
+    return sorted(candidates, key=lambda x: x.final_score, reverse=True)
+```
+
+## 9.3 Vision Model Para Clasificación (M4)
+
+El prompt de clasificación está diseñado específicamente para la taxonomía de la biblioteca:
+
+```
+SYSTEM: Eres un experto en clasificar clips de video para producción de anuncios de dropshipping. 
+Conoces una taxonomía de 5 dimensiones:
+
+GÉNERO: F (mujer visible), M (hombre visible), N (sin persona / objetos / animaciones), 
+MIX (pareja o grupo), KIDS (niños)
+
+FUNCIÓN NARRATIVA:
+- HOOK: clip impactante para primeros 3-7 segundos del anuncio
+- PROBLEM: muestra un problema, dolor, síntoma, queja, dificultad
+- BENEFIT: actividad cotidiana normal, solución en uso, beneficio
+- RESULT: mejora, transformación, recuperación, resultado positivo
+- AUTHORITY: médico, laboratorio, animación científica/médica, terapia
+- SOCIAL_PROOF: testimonio en selfie, persona hablando a cámara
+- NATURAL: ingrediente natural, planta, extracto, preparación
+- CTA: compra, llamada a la acción
+
+SUBCATEGORÍA: describe el tema en MAYUSCULAS_SNAKE_CASE (ej: KNEE_PAIN, BACK_PAIN, 
+DAILY_ROUTINE, ANIMATION_3D, etc.)
+
+CONTEXTO: detalle adicional opcional (ej: STAIRS, POSTURE, IA si es generado por AI)
+
+Responde SOLO en JSON válido:
+{
+  "gender": "F|M|N|MIX|KIDS",
+  "narrative_function": "HOOK|PROBLEM|BENEFIT|RESULT|AUTHORITY|SOCIAL_PROOF|NATURAL|CTA",
+  "subcategory": "SUBCATEGORY_NAME",
+  "context": "CONTEXT_OR_NULL",
+  "is_ai_generated": false,
+  "suggested_filename": "GENDER_FUNCTION_SUBCATEGORY_CONTEXT_01.mp4",
+  "suggested_folder": "GENDER/FUNCTION/SUBCATEGORY/",
+  "confidence": 0.85,
+  "tags": ["tag1", "tag2", "tag3"]
+}
+```
+
+## 9.4 Prompt Intelligence System — Learning Layer
+
+Cada prompt generado se registra en SQLite con: texto completo, concepto de la escena, modelo usado, rating del usuario (1–5), y referencia al proyecto. Los prompts con rating >= 4 son "golden prompts".
+
+**Búsqueda de prompts similares antes de llamar al LLM:**
+```python
+async def get_or_generate_prompt(concept: str, prompt_type: str) -> str:
+    # 1. Buscar en biblioteca de prompts
+    similar = await prompt_store.search(concept, prompt_type, min_rating=4, limit=3)
+    
+    if similar and similar[0].similarity > 0.85:
+        # Existe un golden prompt muy similar → adaptarlo
+        return await llm.adapt_prompt(similar[0].text, concept)
+    
+    # 2. Generar nuevo prompt con contexto de golden prompts
+    context = "\n".join([p.text for p in similar[:3]]) if similar else ""
+    return await llm.generate_prompt(concept, prompt_type, style_context=context)
+```
+
+---
+
+# 10. Data Model Design
+
+## Entidades Principales
+
+### `clips` — Registro de cada clip en la biblioteca
+
+```sql
+CREATE TABLE clips (
+  id TEXT PRIMARY KEY,              -- UUID
+  filename TEXT NOT NULL,           -- nombre original del archivo
+  relative_path TEXT NOT NULL,      -- relativa a library_root
+  absolute_path TEXT NOT NULL,
+  
+  -- Taxonomía (5 ejes)
+  gender TEXT,                      -- F | M | N | MIX | KIDS
+  narrative_function TEXT,          -- HOOK | PROBLEM | BENEFIT | RESULT | AUTHORITY | SOCIAL_PROOF | NATURAL | CTA
+  subcategory TEXT,                 -- KNEE_PAIN | BACK_PAIN | etc.
+  context TEXT,                     -- STAIRS | POSTURE | IA | null
+  variant_number INTEGER,           -- 01, 02, 03...
+  is_ai_generated BOOLEAN DEFAULT FALSE,
+  
+  -- Metadata técnica
+  duration_ms INTEGER,
+  resolution_width INTEGER,
+  resolution_height INTEGER,
+  file_size_bytes INTEGER,
+  file_hash TEXT UNIQUE,            -- SHA256
+  
+  -- Semantic index
+  embedding_id TEXT,                -- ID en ChromaDB
+  semantic_text TEXT,               -- texto usado para embedding
+  tags TEXT,                        -- JSON array
+  
+  -- Estado de clasificación
+  taxonomy_auto_classified BOOLEAN DEFAULT FALSE,
+  taxonomy_manually_verified BOOLEAN DEFAULT FALSE,
+  naming_compliant BOOLEAN DEFAULT FALSE,  -- sigue la convención
+  needs_reclassification BOOLEAN DEFAULT FALSE,
+  
+  -- Uso
+  times_used INTEGER DEFAULT 0,
+  last_used_at TIMESTAMP,
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  indexed_at TIMESTAMP
+);
+```
+
+### `projects` — Cada creativo producido
+
+```sql
+CREATE TABLE projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  product_name TEXT,
+  product_category TEXT,
+  audio_file_path TEXT,
+  transcript_path TEXT,
+  status TEXT DEFAULT 'draft',    -- draft | in_progress | completed
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP
+);
+```
+
+### `scenes` — Escenas de cada proyecto
+
+```sql
+CREATE TABLE scenes (
+  id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  scene_index INTEGER NOT NULL,
+  start_ms INTEGER,
+  end_ms INTEGER,
+  duration_ms INTEGER,
+  text TEXT,
+  concept TEXT,
+  narrative_function TEXT,
+  is_hook BOOLEAN DEFAULT FALSE,
+  hook_score REAL DEFAULT 0.0,
+  gender_hint TEXT,
+  selected_clip_id TEXT REFERENCES clips(id),
+  gap_detected BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `recommendations` — Recomendaciones del sistema por escena
+
+```sql
+CREATE TABLE recommendations (
+  id TEXT PRIMARY KEY,
+  scene_id TEXT REFERENCES scenes(id) ON DELETE CASCADE,
+  clip_id TEXT REFERENCES clips(id),
+  similarity_score REAL,
+  taxonomy_boost REAL DEFAULT 0.0,
+  final_score REAL,
+  rank INTEGER,
+  accepted BOOLEAN,               -- null=sin decisión, true=aceptado, false=rechazado
+  shown_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `gaps` — Escenas sin clip adecuado
+
+```sql
+CREATE TABLE gaps (
+  id TEXT PRIMARY KEY,
+  scene_id TEXT REFERENCES scenes(id) ON DELETE CASCADE,
+  concept TEXT,
+  narrative_function TEXT,
+  gap_type TEXT,                  -- tiktok_search | ai_generation | both
+  tiktok_keywords TEXT,           -- JSON array de strings
+  ai_image_prompt TEXT,
+  ai_motion_prompt TEXT,
+  taxonomy_suggestion TEXT,       -- carpeta recomendada para el clip resultante
+  resolution_type TEXT,           -- tiktok_download | ai_generated | manual | skipped
+  resolved_at TIMESTAMP,
+  resolved_clip_id TEXT REFERENCES clips(id)
+);
+```
+
+### `prompts` — Prompts de IA registrados
+
+```sql
+CREATE TABLE prompts (
+  id TEXT PRIMARY KEY,
+  scene_concept TEXT,
+  prompt_type TEXT,               -- image | motion
+  model_used TEXT,
+  prompt_text TEXT NOT NULL,
+  user_rating INTEGER,            -- 1-5, null si no evaluado
+  notes TEXT,
+  is_golden BOOLEAN DEFAULT FALSE, -- rating >= 4
+  used_in_project_id TEXT REFERENCES projects(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_prompts_concept ON prompts(scene_concept);
+CREATE INDEX idx_prompts_golden ON prompts(is_golden, prompt_type);
+```
+
+### `sound_effects` — Assets de audio (carpeta SE)
+
+```sql
+CREATE TABLE sound_effects (
+  id TEXT PRIMARY KEY,
+  filename TEXT NOT NULL,
+  absolute_path TEXT NOT NULL,
+  gender TEXT,                    -- M | F
+  emotion TEXT,                   -- PAIN | CRYING | etc.
+  duration_ms INTEGER,
+  file_hash TEXT UNIQUE
+);
+```
+
+---
+
+# 11. Semantic Library Design — Análisis Real
+
+## 11.1 Estructura de la Biblioteca
+
+La biblioteca está organizada en 5 géneros/contextos raíz:
+
+| Prefijo | Significado | Clips estimados | Notas |
+|---|---|---|---|
+| `F` | Femenino (mujer protagonista) | ~550 clips | El género más denso. Dominio principal de salud femenina |
+| `M` | Masculino (hombre protagonista) | ~350 clips | Segundo más denso. Salud masculina + vehículos |
+| `N` | Neutro (objetos, animaciones, B-roll) | ~280 clips | Animaciones 3D médicas, vehículos, ingredientes naturales |
+| `MIX` | Mixto (parejas, grupos, contexto familiar) | ~30 clips | Poco denso. Oportunidad de expansión |
+| `KIDS` | Niños | ~3 clips | Casi vacío. Un solo producto detectado |
+| `SE` | Sound Effects | ~6 archivos `.aac` | Assets de audio, no video |
+| `PRODUCTS` | Videos de producto específicos | ~25 clips | FemControl, Flex-a, Muñequera, Resurexion |
+
+## 11.2 Análisis de las 8 Funciones Narrativas
+
+### HOOK — El Corazón del Engagement
+
+La función narrativa más crítica. Su propósito es capturar atención en los primeros 3–7 segundos.
+
+**Cobertura F/HOOK (19 subcategorías):**
+BACK_PAIN (2), BAD_SMELL/PUSSY (6), CELLULITIS_IA (1), CLEANING_MATTRESS (1), DISAGREEMENT (5, incluyendo 2 IA), DRINKING (5, incluyendo BEER), EYE_PROBLEM (4, incluyendo TIC y IA), HAND_PROBLEM (1), HEAD_PROBLEM_IA (1), HIP_PAIN (2), IDEAL_PHYSICAL_STATE (3), IDEAL_SKIN (1), KNEE_PROBLEM (1), NECK_PAIN (1), SEXUAL_PHYSICAL (2), SKIN_PROBLEM (5 incluyendo WRINKLES), SOCIAL_CONFIDENCE (3), URINARY_INCONTINENCE (8), WEIGHT_PROBLEM (10 FAT + 2 LOST_FAT)
+
+**Observación crítica:** `F/HOOK/URINARY_INCONTINENCE` con 8 clips y `F/HOOK/WEIGHT_PROBLEM` con 12 clips son las subcategorías de hook más ricas. Esto indica que el productor trabaja frecuentemente con productos de salud femenina para incontinencia y pérdida de peso. El sistema debe priorizar estas subcategorías en la búsqueda de hooks cuando el producto es de estas categorías.
+
+**Cobertura M/HOOK (14 subcategorías):**
+BODY/FAT (4), CRAMP_PAIN/LEG (2), DRINKING/BEER_IA (1), EYE_PROBLEM (1), FEET_PAIN (1), HAIR_PROBLEM (3, incluyendo 2 IA), HAND_PAIN (1), IDEAL_PHYSICAL/OLDMAN (3+3 TESTOSTERONE), KNEE_PAIN (1+1 IA), PAIN_BACK (1), SEXUAL (3 incluyendo PENIS_IA), SHOULDER_PAIN (1), SLEEPING_PROBLEM (1), STOMACH_PAIN (1)
+
+**Cobertura N/HOOK (categorías especiales):**
+ANATOMY con subcategorías BODY_PROBLEM/EYE (16 clips incluyendo IA), KNEE (12 clips incluyendo IA), HAND (9 clips incluyendo IA). Estos son hooks de tipo "anatomía visual" — extremadamente valiosos para productos médicos/ortopédicos. SURGERY con KNEE (13 clips incluyendo IA) y HAND (5 clips) — hooks quirúrgicos de alto impacto emocional. VEHICLE con ENGINE (5), FIRE (7), GASOLINE (4) — para productos de vehículos.
+
+### PROBLEM — La Identificación del Dolor
+
+La función más poblada en F. El propósito es que el espectador se identifique con el problema antes de presentar la solución.
+
+**Observación crítica de F/PROBLEM:**
+- `URINARY_INCONTINENCE`: 17 clips base + 2 PAIN + 2 SNEEZE = 21 clips totales. La subcategoría más rica de toda la biblioteca. Indica un producto de alta frecuencia de producción.
+- `WEIGHT_PROBLEM/FAT`: 23 clips base + variantes BACK, FACE, NECK. Segundo más rico.
+- `BACK_PAIN`: 12 clips base + 3 POSTURE + 1 INFLAMMATION = 16 clips. Alta frecuencia.
+- `STRESS_OVERWHELM`: 11 base + 2 IA = 13 clips. Importante para salud mental/femenina.
+- `SKIN_PROBLEM/WRINKLES`: 8 clips. Alta cobertura para antiaging.
+
+**Observación en M/PROBLEM:**
+- `BODY/HAIR_PROBLEM`: 14 clips base + 3 IRRITATION + 1 ITCH + 2 PROCESS = 20 clips. El problema más rico en el segmento masculino. Productos para caída de cabello o cuidado capilar masculino son frecuentes.
+- `BODY/FAT_BODY`: 10 base + ARM, BACK, CLOTHES, OLDMAN (×3) = 16 clips.
+- `SLEEPING_PROBLEM`: 6 clips incluyendo POSTURE e IA.
+
+**En N/PROBLEM:**
+- `BODY_PROBLEM/EYE_PROBLEM`: 28 clips (el más rico de todo N/PROBLEM). Incluye BLUE_LIGHT (2), DRIVING (6), IA (5), INJECTION, LIGTH, MICRO, SURGERY.
+- `BODY_PROBLEM/HAND_PROBLEM`: 25 clips incluyendo GUITAR, INFLAMMATION (4), INJECTION (5), RIGIDITY (2), TRIGGER_FINGER (4), WRITING. Cobertura muy específica de problemas de mano.
+- `BODY_PROBLEM/KNEE_PROBLEM`: 13 base + INYECTION (3) = 16 clips. El área más trabajada en N/PROBLEM junto con eye y hand.
+- `VEHICLE_PROBLEM/ENGINE`: 12 clips + IA. VEHICLE_PROBLEM/SMOKE: 5 clips. Alta cobertura para el segmento de aditivos de vehículos.
+
+### BENEFIT — La Vida Con el Problema Resuelto
+
+Clips que muestran actividades cotidianas normales — implican que el producto permite vivir con normalidad.
+
+**Observación crítica de F/BENEFIT/DAILY_ROUTINE:**
+Esta subcategoría es la más diversa de toda la biblioteca con 30+ sub-subcategorías: BEVERAGE (3), CLEANING (1), CLOTHES (3), COOKING (5), DIET (2), DRINKING (8 incluyendo BEER, MILK), DRIVING (2), EATING (5), EXERCISING_PROCESS (18 incluyendo KEGEL×6, PILATES, STRETCH, NECK, SHOULDER), FAMILY_CONTEXT/GRANDPARENT (3), PREGNANT (1), FEET_CREAM (1), GASOLINE (1), HOME_CHORES (3), JUMPING (1), LAUGHING (2), LOOKING (2), LOOKING_MIRROR (3), MEETING (1), PAINTING/MANDALAS (2), PHONE (3), READING (1), RUNNING (2), SANITARY_TOWEL (7+IA), SHOPPING (2), SKIN_CARE (8+MASK), STAIRS/GOING_UP (1), TALKING (5), VEHICLE (1), WAKE_UP (4), WALKING (4), WATCHING_TV (2), WEIGHING_ONESELF (1), WORKING_COMPUTER (6+TIRED).
+
+El productro usa clips de "vida cotidiana" femenina para casi cualquier producto de salud. La diversidad es una fortaleza — siempre hay un clip de contexto de vida para acompañar la narrativa del guion.
+
+**Observación en BENEFIT específicos:**
+- `F/BENEFIT/SEXUAL_STATE`: 6 clips incluyendo PIKE. Para productos de salud sexual femenina.
+- `F/BENEFIT/TRANQUILLITY`: 6 clips incluyendo MEDITATE. Para productos de relajación/estrés.
+- `F/BENEFIT/PHYSICAL_PROGRESS`: 8 clips con peso (5), abdomen (1), espalda (1). Para productos de pérdida de peso.
+- `M/BENEFIT/EXERCISING_PROCESS`: 8 clips generales + 4 OLDMAN. Rica cobertura de ejercicio masculino.
+
+### RESULT — La Transformación
+
+Clips que muestran el resultado final — el estado ideal después de usar el producto.
+
+**Observación crítica de F/RESULT:**
+- `SKIN_RECOVERY/WRINKLES`: 18 clips + BEFORE_AFTER (1) = 19 clips. La subcategoría de resultado más rica de toda la biblioteca. El segmento antiaging/wrinkles es claramente prioritario.
+- `IDEAL_PHYSICAL_STATE`: 11 clips base + ABDOMEN (8) + ABDOMEN_LOST (2) + FACE (1) + RUNNING (1) = 23 clips. Muy rico para productos de adelgazamiento.
+- `PHYSICAL_TRANSFORMATION`: 7 base + ABDOMEN (5) + BACK (1) + FACE_FAT (2) = 15 clips. Antes/después visual.
+- `SOCIAL_CONFIDENCE`: 7 clips incluyendo IA. Para productos que mejoran la vida social.
+- `SOLUTION_FOUND`: 7 clips (HAPPY_WOMAN × 6, HAPPY_OLDWOMAN × 1). Clips genéricos de satisfacción.
+- `WALKING_RECOVERY`: 6 clips. Para productos de movilidad/dolor articular.
+
+**Observación en M/RESULT:**
+- `IDEAL_PHYSICAL_STATE`: 7 base + BACK (1) + OLDMAN (6) + TESTOSTERONE (4) + VIBE (1) = 19 clips. Muy rico para productos masculinos de fuerza/testosterona.
+- `HAIR_RECOVERY`: 8 clips. Segunda subcategoría más rica de M/RESULT. Para productos capilares masculinos.
+- `PHYSICAL_TRANSFORMATION`: 3 FAT_BODY + BACK (1) + HAIR (2) = 6 clips.
+- `WALKING_RECOVERY`: 4 base + GOING_UP_STAIRS (1) + RUNNING (3) = 8 clips.
+
+**Observación en N/RESULT:**
+- `ANIMATION_3D`: subcategorías KNEE (6), LIVER (3), SKIN (2), URINARY (3), SPINE (1), STOMACH (1), etc. Animaciones 3D de resultado que muestran el proceso de curación a nivel interno. Estas son las escenas más difíciles de conseguir y las más valiosas — explican cómo funciona el producto "por dentro".
+- `BODY/HAND`: 7 clips base + NAILS (1). Manos recuperadas.
+- `CAR/CLIMB`, `CAR/GASOLINE`, `CAR/OVERTAKE`: Resultados visuales para productos de vehículos.
+
+### AUTHORITY — Credibilidad y Confianza
+
+**La sección N/AUTHORITY es la más sofisticada y valiosa de toda la biblioteca:**
+
+`ANIMATION/` contiene 30+ subcategorías de animaciones médicas 3D: BACK (2), BLOOD (6), BODY (8), BONE (1), BRAIN (6), CELL (6 incluyendo ADN×2), ELECTRIC (1), EYE (15 incluyendo SURGERY), FAT (4), FEET (5), GLUTEUS (1), HAIR (8), HAND (4), INTESTINE (7), KNEE (7), LIVER (1), LUNG (2), MANDALAS (1), MUSCLE (3 + ARM + BACK×2), NERVES (5 incluyendo SCIATIC), NEURON (5), NUTRIENTS (6), PELVIS (2), PUSSY (4), SHOULDER (4), SKIN (1), SPINE (7), STOMACH (2), TESTOSTERONE (2), URINE (2), VIRUS (5).
+
+Este arsenal de animaciones científicas es extraordinario. Para cualquier guion que explique el mecanismo de acción de un producto (cómo afecta las células, los nervios, los intestinos, la sangre), el sistema puede encontrar la animación correspondiente. Esto es lo que diferencia a un creativo de alta conversión de uno genérico.
+
+**Observación crítica:** La subcategoría `N/AUTHORITY/ANIMATION/EYE_ANIMATION` con 15 clips (incluyendo SURGERY) indica una especialización fuerte en productos oculares. `N/AUTHORITY/ANIMATION/CELL_ANIMATION` con 6 clips (incluyendo ADN×2) y `N/AUTHORITY/ANIMATION/NEURON_ANIMATION` con 5 clips son valiosas para productos que explican mecanismos celulares o neurológicos.
+
+`N/AUTHORITY/LABORATORY` con 16 clips (incluyendo COMPUTER, IA, INVIMA, MIXING, NATURAL, PH, PRODUCTION, URINE, VISUAL) da credibilidad de producción/certificación.
+
+`N/AUTHORITY/SURGERY_HOSPITAL` con subcategorías KNEE (11), EYE (5), HAND (9), BACK (2), FEET (1), SKIN/BOTOX (1) — imágenes de cirugías reales. Son hooks de alto impacto usados para mostrar "la alternativa invasiva que el producto evita".
+
+`N/AUTHORITY/VEHICLE/` con ENGINE (13), ELECTRONICS (7), GASOLINE (4 incluyendo TEST), FACTORY (4), INJECTORS (9 incluyendo TEST) — autoridad técnica para el segmento de aditivos de vehículos.
+
+### NATURAL — Ingredientes y Origen
+
+`N/NATURAL/INGREDIENT_SOURCE` tiene 17 ingredientes específicos: ARTICHOKE, ASHWAGANDHA (×2), ASTAXANTHIN, BEET, BEE_VENOM, BOSWELLIA, GINGKO_BILOBA, GINSENG, GUAVA, MAGNESIUM (×2), MEDITERRANEAN, NATURAL_STEVIA, PUMPKIN_SEED, TURMERIC, WILD_HARVEST, ZEAXANTHIN.
+
+`N/NATURAL/RAW_INGREDIENT` tiene 30+ ingredientes crudos: ASHWAGANDHA (3+IA), ASTAXANTHIN, BERBERINE, BLACK_MACA (×2), BUTTER_IA, CAMU_CAMU (×2), CINNAMON, DANDELION, EGG, FENUGREEK, GRAPEFRUIT, HYDROLYZED_COLLAGEN, IRON, LIVER, MAGNESIUM, MEAT, MILK_THISTLE (×2), NUTS (×4), PEA, PHOSPHORUS, ROSEMARY, TURMERIC (×2).
+
+Esta cobertura de ingredientes naturales es rica. El sistema puede mapear "contiene turmeric" en el guion directamente a `N_NATURAL_RAW_INGREDIENT_TURMERIC_01.mp4` o `N_NATURAL_INGREDIENT_SOURCE_TURMERIC_01.mp4`.
+
+### SOCIAL_PROOF — Testimonios
+
+`F/SOCIAL_PROOF/TESTIMONIAL_SELFIE`: 8 clips con variantes FRUSTRATION, SAD, SATISFIED (×3), WOMAN (×3). Cobertura básica pero funcional.
+
+`M/SOCIAL_PROOF/TESTIMONIAL_SELFIE`: 3 clips incluyendo OLDMAD (×2). Más escasa.
+
+`M/SOCIAL_PROOF/CAR_TESTIMONIAL`: 1 clip. Para el segmento de vehículos.
+
+**Observación:** La sección SOCIAL_PROOF es la más escasa de toda la biblioteca. Oportunidad de expansión.
+
+### PRODUCTS — Assets de Producto Específicos
+
+`PRODUCTS/FemControl/`: 4 clips (V3, V4 del Pelvic Floor Massager).
+`PRODUCTS/Flex-a/`: 11 clips (PRODUCT_Flaxa_01 a 11, mix de mp4 y MOV).
+`PRODUCTS/Muñequera/`: 2 clips con nombres genéricos de TikTok (TEMPRORAL).
+`PRODUCTS/Resurexion/`: 10 clips.
+
+**Observación crítica:** Las carpetas `PRODUCTS/` contienen los videos del producto específico — los que muestran el producto físico. El sistema debe tratarlos como una categoría especial: cuando el guion menciona explícitamente el producto, estos clips son los candidatos prioritarios para escenas de CTA o presentación del producto.
+
+Los clips de `PRODUCTS/Muñequera/` con nombres `TEMPRORAL(1)-1.mp4` son el ejemplo del problema de naming fuera de taxonomía. M4 debe reclasificarlos.
+
+## 11.3 Gaps Estratégicos en la Biblioteca
+
+Basado en el análisis, estos son los gaps que el Gap Detector debe priorizar para sugerir expansión:
+
+**Gaps críticos:**
+- `CTA`: prácticamente vacío en todos los géneros excepto F (1 clip: `F_CTA_BUY_NOW_HAPPY_WOMAN_PACKAGE_01.mp4`). Más clips de CTA mejorarían los finales de los creativos.
+- `MIX/SOCIAL_PROOF`: vacío. Los testimonios en pareja o mixtos son valiosos.
+- `KIDS/`: 3 clips totales. Si hay productos para niños, este es el mayor gap.
+- `F/NATURAL/`: carpeta vacía (existe pero sin clips). Los ingredientes naturales femeninos como contexto son valiosos.
+- `M/NATURAL/`: vacío.
+
+**Gaps moderados:**
+- `F/BENEFIT/SEXUAL_STATE`: 6 clips. Podría expandirse.
+- `M/SOCIAL_PROOF/TESTIMONIAL_SELFIE`: solo 3 clips.
+- `MIX/HOOK`: solo 2 clips (BAD_BREATH, DOCTOR/GLUTEAL_TENDINOPATHY).
+
+## 11.4 Conversión a Knowledge Base Semántica — Plan de Indexado
+
+**Fase A — Bootstrap de índice (Fase 0 del roadmap):**
+1. Recorrer recursivamente `E:\` (raíz de la biblioteca).
+2. Para cada `.mp4` / `.mov`, aplicar `taxonomy/parser.py` para extraer los 5 ejes.
+3. Crear registro en SQLite.
+4. Construir texto semántico con `taxonomy/text_builder.py`.
+5. Vectorizar con `text-embedding-3-small`.
+6. Insertar en ChromaDB.
+7. Generar thumbnail con FFmpeg → cachear en `~/.aicos/thumbnails/`.
+
+**Detección de clips no conformes (naming inconsistente):**
+Clips que no siguen el patrón `{GENDER}_{FUNCTION}_{SUBCATEGORY}` se marcan como `naming_compliant=False` y se agregan al reporte `needs_reclassification.txt` para procesamiento vía M4.
+
+**Clips detectados como no conformes en la biblioteca actual:**
+- `clearzal pain relieving gel 03(12)-1.mp4` en `M/AUTHORITY/CHIROPRACTOR_TALKING/`
+- `TEMPRORAL(1)-1.mp4` y `TEMPRORAL(10)-1.mp4` en `PRODUCTS/Muñequera/`
+- `V3_Pelvic Floor Massager 02(1)-1.mp4` y similares en `PRODUCTS/FemControl/`
+- `KID_AUTHORITY_DEVELOPMENT_01.mp4` y `KIDS_BENEFIT_PLAYING_01.mp4` (prefijo inconsistente: KID vs KIDS)
+- `NEUTRAL_AUTHORITY_*` vs `N_AUTHORITY_*` (prefijo inconsistente en algunos clips de N/)
+- Carpeta `mssdk/` con archivos `.log` dentro de `F/SOCIAL_PROOF/EMOTION/` y `N/PROBLEM/VEHICLE_PROBLEM/SMOKE/` — archivos de sistema que deben ignorarse.
+
+---
+
+# 12. Prompt Intelligence System
+
+## 12.1 Arquitectura
+
+El PIS tiene tres funciones: **memoria** (guardar prompts exitosos), **sugerencia** (proponer prompts similares), y **refinamiento** (mejorar calidad usando golden prompts como contexto).
+
+## 12.2 Flujo de Memoria
+
+Todo prompt generado por M3 se registra en la tabla `prompts`. El usuario puede calificar el resultado en cualquier momento desde el dashboard. Un prompt con rating >= 4 se marca como `is_golden=True`.
+
+## 12.3 Búsqueda de Golden Prompts Antes de Generar
+
+```python
+async def generate_image_prompt(concept: str, narrative_function: str) -> str:
+    # 1. Buscar golden prompts similares
+    similar_prompts = db.query(
+        "SELECT * FROM prompts WHERE is_golden=1 AND prompt_type='image' 
+         ORDER BY similarity(scene_concept, ?) DESC LIMIT 3",
+        (concept,)
+    )
+    
+    if similar_prompts and similarity(similar_prompts[0].scene_concept, concept) > 0.85:
+        # Adaptar el golden prompt al nuevo concepto
+        return await llm.adapt_prompt(similar_prompts[0].text, concept)
+    
+    # 2. Generar con contexto de golden prompts para calibrar estilo
+    style_context = "\n---\n".join([p.text for p in similar_prompts])
+    
+    prompt_template = load_prompt("image_prompt.txt")
+    return await llm.complete(prompt_template.format(
+        concept=concept,
+        narrative_function=narrative_function,
+        golden_prompts_context=style_context
+    ))
+```
+
+## 12.4 Categorías de Prompts de IA Relevantes Para Esta Biblioteca
+
+Basado en los gaps y la cobertura existente, los prompts más valiosos a cultivar son:
+
+- **Animaciones médicas IA:** Para complementar las ya existentes en `N/AUTHORITY/ANIMATION/`. Subcategorías con baja cobertura: BLADDER, PROSTATE, LIVER (solo 1 clip), THYROID.
+- **Hooks IA de anatomía:** `N/HOOK/ANATOMY/BODY_PROBLEM/` tiene buena cobertura pero siempre se necesitan más variantes. KNEE_IA (6), EYE_IA (6) son las más usadas.
+- **Escenas de Daily Routine IA:** Para MIX y situaciones que no tienen clip de persona real disponible.
+- **CTA visual IA:** El vacío en CTA puede llenarse con generación IA de "persona satisfecha con paquete".
+
+---
+
+# 13. Auto Classification System
+
+## 13.1 Pipeline Completo de M4
+
+```
+1. watchdog detecta nuevo archivo en incoming/
+2. Validar: extensión video (mp4, mov, webm, avi, mkv)
+3. Calcular SHA256 → verificar contra clips.file_hash (deduplicación)
+4. FFmpegService.extract_frame(clip_path, position=0.5) → frame_path
+5. FFmpegService.get_metadata(clip_path) → {duration, resolution, codec}
+6. VisionService.classify_clip(frame_path, taxonomy_context) → ClassificationResult
+7. Si confidence >= 0.75:
+   a. LibraryService.generate_filename(classification) → new_filename
+   b. LibraryService.get_or_create_folder(classification) → target_folder
+   c. UI: mostrar propuesta al usuario (thumbnail + clasificación + nombre + carpeta)
+   d. Usuario confirma/edita → ejecutar
+8. Si confidence < 0.75:
+   a. Mover a incoming/needs_review/
+   b. Notificar en dashboard
+9. Post-confirmación:
+   a. os.rename(source, target_folder/new_filename)
+   b. db.insert_clip(classification + metadata)
+   c. vector_store.insert(clip_id, semantic_text, embedding)
+   d. thumbnail_cache.store(clip_id, thumbnail)
+```
+
+## 13.2 Generación de Nombre Según Convención Real
+
+```python
+def generate_filename(classification: ClassificationResult, next_variant: int) -> str:
+    parts = [classification.gender]
+    
+    if classification.narrative_function in ["HOOK", "PROBLEM", "BENEFIT", "RESULT",
+                                              "AUTHORITY", "SOCIAL_PROOF", "NATURAL", "CTA"]:
+        parts.append(classification.narrative_function)
+    
+    parts.append(classification.subcategory.upper().replace(" ", "_"))
+    
+    if classification.context:
+        parts.append(classification.context.upper().replace(" ", "_"))
+    
+    if classification.is_ai_generated:
+        parts.append("IA")
+    
+    parts.append(f"{next_variant:02d}")
+    
+    return "_".join(parts) + ".mp4"
+
+# Ejemplos de output:
+# F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4
+# N_AUTHORITY_ANIMATION_KNEE_ANIMATION_IA_08.mp4
+# M_BENEFIT_DAILY_ROUTINE_WORKING_COMPUTER_05.mp4
+```
+
+## 13.3 Detección del `next_variant`
+
+```python
+def get_next_variant(gender: str, function: str, subcategory: str, context: str = None) -> int:
+    pattern = f"{gender}_{function}_{subcategory}"
+    if context:
+        pattern += f"_{context}"
+    
+    existing = db.query(
+        "SELECT MAX(variant_number) FROM clips WHERE filename LIKE ?",
+        (f"{pattern}_%",)
+    )
+    return (existing or 0) + 1
+```
+
+---
+
+# 14. Script-to-Visual Pipeline
+
+## 14.1 Flujo Detallado MP3 → Recomendaciones Con Taxonomía
+
+**Etapa 1: Ingestión**
+```
+Usuario sube MP3 → validar formato → crear Project en DB → mostrar en UI
+```
+
+**Etapa 2: Transcripción (faster-whisper)**
+```
+faster_whisper.transcribe(mp3_path, language='es', word_timestamps=True)
+→ Transcript{segments: [{start, end, text, words[]}]}
+```
+Duración estimada para audio de 2 min: ~20–30 seg en CPU i5 12th Gen con modelo `small`.
+
+**Etapa 3: Segmentación y Hook Detection**
+```
+Segmenter.segment(transcript, target_duration_ms=2500)
+→ List[Scene{scene_index, start_ms, end_ms, text, is_hook, hook_score}]
+```
+Los primeros 7,000ms con hook_score alto se marcan `is_hook=True`.
+
+**Etapa 4: Inferencia de Función Narrativa**
+```
+NarrativeFunctionClassifier.classify(scene, position_in_audio)
+→ Scene.narrative_function = "HOOK|PROBLEM|BENEFIT|RESULT|AUTHORITY|SOCIAL_PROOF|CTA"
+```
+Heurística por posición + keywords. Para escenas ambiguas: LLM con costo mínimo.
+
+**Etapa 5: Extracción de Concepto**
+```
+ConceptExtractor.extract(scene.text, scene.narrative_function)
+→ Scene.concept: str  # en inglés, 2-5 palabras
+```
+spaCy para frases simples → traducción implícita al dominio de la biblioteca.
+LLM para conceptos abstractos o médicos técnicos.
+
+**Etapa 6: Búsqueda Vectorial Con Boosting de Taxonomía**
+```python
+# Construir query enriquecida
+query = f"{NARRATIVE_EXPANSIONS[scene.narrative_function]} {scene.concept}"
+query_embedding = embedder.embed(query)
+
+# Buscar en ChromaDB
+candidates = vector_store.search(query_embedding, n_results=15)
+
+# Aplicar boosting de taxonomía
+boosted = taxonomy_booster.boost(candidates, scene)
+
+# Top-5 para presentar al usuario
+recommendations = boosted[:5]
+```
+
+**Etapa 7: Procesamiento de Gaps**
+```python
+if recommendations[0].final_score < config.search.gap_threshold:
+    gap = Gap(scene_id=scene.id, concept=scene.concept, ...)
+    
+    # Determinar tipo de gap
+    if scene.narrative_function == "AUTHORITY":
+        gap.gap_type = "ai_generation"  # Animación médica IA
+    elif is_abstract_concept(scene.concept):
+        gap.gap_type = "both"
+    else:
+        gap.gap_type = "tiktok_search"
+    
+    # Generar keywords/prompts según tipo
+    gap = await gap_handler.enrich(gap)
+    
+    # Sugerir dónde debería vivir el clip en la taxonomía
+    gap.taxonomy_suggestion = taxonomy_suggester.suggest(scene)
+```
+
+**Etapa 8: Output Estructurado**
+```
+Project{
+  scenes: [
+    {scene, recommendations[top-5], gap?}
+    ...
+  ]
+  total_scenes: int
+  gaps_count: int
+  hooks_detected: int
+  estimated_duration_ms: int
+}
+```
+
+## 14.2 Ejemplo Real Con la Biblioteca Analizada
+
+**Guion:** "¿Sientes dolor en la rodilla al bajar escaleras? Millones de personas mayores de 50 años sufren este problema sin saber que existe una solución natural..."
+
+**Segmentación:**
+- Escena 1 (0–2.5s): "¿Sientes dolor en la rodilla al bajar escaleras?" → `is_hook=True`, concept="knee pain stairs", narrative_function="HOOK"
+- Escena 2 (2.5–5s): "Millones de personas mayores de 50 años" → concept="many people over 50", narrative_function="PROBLEM"
+- Escena 3 (5–7.5s): "sufren este problema" → concept="suffering joint pain problem", narrative_function="PROBLEM"
+- Escena 4 (7.5–10s): "sin saber que existe una solución natural" → concept="natural solution exists", narrative_function="BENEFIT"
+
+**Resultados esperados del sistema:**
+
+Escena 1 (HOOK, knee stairs): Busca en HOOK primero → `F_HOOK_KNEE_PROBLEM_01.mp4` (score 0.81), `N_HOOK_ANATOMY_BODY_PROBLEM_KNEE_01.mp4` (score 0.78), `N_HOOK_SURGERY_KNEE_01.mp4` (score 0.74)...
+
+Escena 2 (PROBLEM, many people): `F_PROBLEM_WALK_PAIN_OLD_WOMEN_01.mp4` (score 0.71), `M_PROBLEM_WALK_PAIN_01.mp4` (score 0.68)...
+
+Escena 3 (PROBLEM, suffering joint): `F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4` (score 0.89 — match exacto), `F_PROBLEM_KNEE_PAIN_01.mp4` (score 0.82)...
+
+Escena 4 (BENEFIT, natural solution): `N_NATURAL_RAW_INGREDIENT_TURMERIC_01.mp4` (score 0.72), `N_BENEFIT_PHILL_VISUAL_01.mp4` (score 0.68), `N_AUTHORITY_FORMULATION_PROCESS_NATURAL_EXTRACT_01.mp4` (score 0.65)...
+
+---
+
+# 15. Cursor-First Development Strategy
+
+## 15.1 El Archivo `.cursorrules` — Reglas de Arquitectura
+
+```markdown
+# AICOS — Architecture Rules for Cursor
+
+## Core Principles
+- Architecture: 3 layers (Core → Modules → API). Never skip layers.
+- Communication: Only via Pydantic models in aicos/models/schemas.py
+- No global state. No shared mutable state between modules.
+- External APIs: ONLY in services/. Never call OpenAI/Anthropic directly in modules or core.
+- ChromaDB: ONLY in core/vector_store.py
+- FFmpeg: ONLY in services/ffmpeg_service.py
+- SQLite: ONLY via LibraryService in services/library_service.py or via db.py in database/
+- Taxonomy logic: ONLY in aicos/taxonomy/. Never hardcode filename patterns elsewhere.
+
+## Code Standards
+- Python 3.11+. Full type hints on all functions.
+- Google-style docstrings on all public functions.
+- Explicit error handling. Never bare `except:`. Use specific exception types.
+- Logging: import logging; logger = logging.getLogger(__name__). Never print().
+- Config: All configurable values from config.yaml via aicos.config module. No hardcoded paths.
+- Async: FastAPI routes and LLM calls are async. Sync in core/ is OK.
+
+## Taxonomy Module Rules
+- taxonomy/parser.py: parse filename → TaxonomyResult (Pydantic)
+- taxonomy/builder.py: TaxonomyResult → filename string
+- taxonomy/text_builder.py: TaxonomyResult → semantic text for embedding
+- taxonomy/constants.py: NARRATIVE_EXPANSIONS, SUBCATEGORY_EXPANSIONS, GENDER_MAP
+- These constants are the most important config in the system. Review carefully before changing.
+
+## Testing
+- Every function in core/ needs a unit test.
+- Use pytest fixtures in tests/fixtures/.
+- Mock ALL external API calls in tests (OpenAI, Anthropic, Vision).
+- Test taxonomy/parser.py with 20+ real filenames from the actual library.
+
+## Specific Patterns
+- ChromaDB collection name: "clips_v1" (versioned for future migrations)
+- Thumbnail naming: {clip_id}_thumb.jpg in ~/.aicos/thumbnails/
+- Log format: JSON structured logging with module, function, duration_ms for operations
+- Error recovery: ChromaDB failures → log + continue (non-blocking). SQLite failures → raise.
+```
+
+## 15.2 Flujo de Desarrollo con Cursor — Módulo por Módulo
+
+**Para el Taxonomy Parser (primer módulo a construir):**
+```
+Prompt para Cursor:
+
+Implementa aicos/taxonomy/parser.py para el AI Creative Operating System.
+
+CONTEXTO: La biblioteca de clips tiene nombres como:
+- F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4
+- N_AUTHORITY_ANIMATION_KNEE_ANIMATION_IA_03.mp4
+- MIX_BENEFIT_DAILY_ROUTINE_COUPLE_CONTEX_SLEEPING_01.mp4
+- M_RESULT_IDEAL_PHYSICAL_STATE_OLDMAN_04.mp4
+- NEUTRAL_AUTHORITY_SPINE_3D_ANIMATION_01.mp4  (prefijo legacy)
+- KID_AUTHORITY_DEVELOPMENT_01.mp4             (prefijo legacy)
+- clearzal pain relieving gel 03(12)-1.mp4     (no conforme)
+
+INPUT: filename: str
+OUTPUT: TaxonomyResult (Pydantic model en schemas.py):
+  gender: Optional[str]           # F | M | N | MIX | KIDS | None (si no conforme)
+  narrative_function: Optional[str] # HOOK | PROBLEM | BENEFIT | RESULT | AUTHORITY | SOCIAL_PROOF | NATURAL | CTA | None
+  subcategory: Optional[str]
+  context: Optional[str]
+  variant_number: Optional[int]
+  is_ai_generated: bool           # True si "IA" aparece en el nombre
+  is_naming_compliant: bool       # True si sigue la convención
+  raw_parts: List[str]            # partes del nombre split por "_"
+
+Maneja prefijos legacy: NEUTRAL → N, KID → KIDS.
+Si el nombre no sigue ningún patrón reconocible: is_naming_compliant=False, todo Optional es None.
+
+Sigue las cursorrules: type hints completos, docstrings Google style, no hardcode en constantes.
+Las constantes van en taxonomy/constants.py.
+```
+
+**Para el Text Builder (segundo componente crítico):**
+```
+Prompt para Cursor:
+
+Implementa aicos/taxonomy/text_builder.py.
+
+INPUT: TaxonomyResult (del parser)
+OUTPUT: str (texto semántico para embedding)
+
+Usa las constantes NARRATIVE_EXPANSIONS y SUBCATEGORY_EXPANSIONS de taxonomy/constants.py.
+El texto resultante debe maximizar la similaridad semántica con queries en español sobre temas
+de salud, bienestar, vehículos y vida cotidiana.
+
+El texto debe expandir cada eje de la taxonomía con sinónimos relevantes.
+Ejemplo esperado para F_PROBLEM_KNEE_PAIN_STAIRS_01:
+"woman female | problem pain symptom suffering | knee pain articular joint cartilage | 
+stairs going up climbing steps effort | knee pain stairs woman symptom difficulty walking"
+
+Para TaxonomyResult con is_naming_compliant=False, retornar solo el filename procesado
+con snake_case split.
+```
+
+## 15.3 Orden de Implementación Recomendado
+
+Basado en las dependencias entre módulos:
+
+1. `models/schemas.py` — Todos los Pydantic models primero. Sin código, solo contratos.
+2. `taxonomy/constants.py` — Mapas de expansión.
+3. `taxonomy/parser.py` + tests.
+4. `taxonomy/text_builder.py` + tests.
+5. `database/db.py` + schema SQL.
+6. `services/ffmpeg_service.py` — Thumbnails y metadata.
+7. `core/embedder.py` — Wrapper embeddings.
+8. `core/vector_store.py` — Abstracción ChromaDB.
+9. Script `bootstrap_index.py` — Indexar la biblioteca completa (CLI, no API).
+10. `core/transcriber.py` — Wrapper faster-whisper.
+11. `core/segmenter.py` — Segmentación + hook detection.
+12. `core/concept_extractor.py` — spaCy + LLM fallback.
+13. `modules/script_analyzer.py` — Orquestación M1.
+14. `modules/clip_recommender.py` — Orquestación M2.
+15. `api/main.py` + routers `/analyze` y `/search`.
+16. `frontend/app.py` — Dashboard PyQt6 básico.
+17. `services/llm_service.py` + `modules/gap_handler.py` — M3.
+18. `services/vision_service.py` + `modules/clip_organizer.py` — M4.
+
+## 15.4 El Script de Bootstrap — Primer Entregable Verificable
+
+Antes del dashboard, el primer entregable valioso es un CLI script que indexa toda la biblioteca:
+
+```bash
+python -m aicos.scripts.bootstrap_index --library-root "E:/" --verbose
+
+# Output esperado:
+# Scanning library at E:/...
+# Found 1,247 clips
+# Parsing taxonomy... 1,189 compliant, 58 non-compliant
+# Non-compliant clips saved to: ~/.aicos/needs_reclassification.txt
+# Generating thumbnails... [=====>   ] 847/1247
+# Generating embeddings... [========>] 1247/1247
+# Inserting into ChromaDB...
+# Bootstrap complete: 1,247 clips indexed in 4m 32s
+# Cost: $0.012 (embeddings API)
+```
+
+Cuando este script termina exitosamente, el sistema ya puede hacer búsquedas semánticas desde CLI. Ese es el primer momento de valor real.
+
+---
+
+# 16. Development Roadmap
+
+## Fase 0 — Fundación (Semana 1–2)
+
+**Objetivo:** Setup completo + bootstrap de la biblioteca.
+
+- Setup repositorio con Poetry, estructura de directorios, `.cursorrules`.
+- Implementar `taxonomy/parser.py` con tests contra los filenames reales de la biblioteca.
+- Implementar `taxonomy/text_builder.py` con expansiones semánticas.
+- Implementar `taxonomy/constants.py` con todos los mapas.
+- Setup SQLite con schema completo.
+- Implementar `core/vector_store.py` y `core/embedder.py`.
+- Implementar `services/ffmpeg_service.py`.
+- Script CLI `bootstrap_index.py`.
+- **Milestone:** `python -m aicos.scripts.bootstrap_index` completa sin errores. Reporte de 58+ clips no conformes generado. Búsqueda vectorial básica funciona desde Python REPL.
+
+## Fase 1 — MVP Core CLI (Semana 3–5)
+
+**Objetivo:** M1 + M2 + M3 básico funcionando desde CLI.
+
+- `core/transcriber.py` (faster-whisper).
+- `core/segmenter.py` + hook detection.
+- `core/concept_extractor.py` (spaCy + LLM fallback).
+- `modules/script_analyzer.py`.
+- `modules/clip_recommender.py` con taxonomy boosting.
+- CLI script: `python -m aicos analyze audio.mp3 --output project.json`.
+- `services/llm_service.py` + gap keywords (M3 básico).
+- **Milestone:** Procesar un MP3 de un creativo real. Comparar las 10 primeras recomendaciones del sistema vs la selección manual del productor. Target: >60% de coincidencia.
+
+## Fase 1.5 — API + Auto Organizer (Semana 6–7)
+
+**Objetivo:** FastAPI funcional + M4 operativo.
+
+- `api/main.py` + routers `/analyze`, `/search`, `/library`.
+- `services/vision_service.py` con prompt de clasificación de taxonomía real.
+- `modules/clip_organizer.py` con watchdog.
+- Flujo completo: clip en `incoming/` → clasificado → renombrado → indexado.
+- **Milestone:** Descargar 5 clips de TikTok → poner en `incoming/` → todos clasificados correctamente con nombre de taxonomía y movidos a la carpeta correcta.
+
+## Fase 2 — Dashboard MVP (Semana 8–10)
+
+**Objetivo:** Interfaz gráfica que reemplaza el CLI para el flujo principal.
+
+- Dashboard PyQt6 con tres paneles:
+  - Izquierdo: transcript segmentado con función narrativa y hook indicators.
+  - Central: thumbnails de clips recomendados por escena (top-5 con scores).
+  - Derecho: gaps detectados con keywords TikTok y prompts IA.
+- Barra lateral de biblioteca (browse, search manual).
+- Registro de feedback (aceptar/rechazar recomendaciones).
+- **Milestone:** El productor usa el dashboard en una sesión de trabajo real de principio a fin sin necesidad de abrir el CLI.
+
+## Fase 3 — Intelligence Layer (Semana 11–14)
+
+**Objetivo:** El sistema mejora con el uso.
+
+- Prompt Intelligence System completo (memoria, sugerencia, refinamiento).
+- Hook Library con búsqueda semántica.
+- Scoring de clips por historial de uso (clips más usados tienen boost ligero).
+- Re-ranking con feedback histórico del usuario.
+- Reporte de cobertura de biblioteca: qué subcategorías están bajo en clips.
+- Procesamiento batch de `needs_reclassification.txt` con M4.
+- **Milestone:** Las recomendaciones de la semana 14 tienen >75% de coincidencia con la selección manual del productor (vs >60% en Fase 1).
+
+## Fase 4 — UI Upgrade & Export (Semana 15–18)
+
+**Objetivo:** UI más rica y valor adicional en el output.
+
+- Migración frontend a Tauri (opcional, según satisfacción con PyQt6).
+- Preview de clips en la UI (player de video embebido).
+- Exportación de proyecto: lista ordenada de clips con timestamps y rutas para guiar el trabajo en CapCut.
+- Métricas de biblioteca: dashboard de cobertura por subcategoría.
+- Optimización de re-indexado incremental para bibliotecas > 5,000 clips.
+- **Milestone:** El tiempo promedio por creativo (producto conocido) < 60 minutos medido en 5 creativos consecutivos.
+
+---
+
+# 17. Risks and Technical Challenges
+
+## R1 — Calidad de Embeddings Para la Taxonomía Específica
+
+**Riesgo:** Los embeddings de `text-embedding-3-small` pueden no capturar bien los matices específicos del dominio (términos médicos en español, nombres de ingredientes naturales poco comunes, terminología de vehículos).
+
+**Probabilidad:** Media.  
+**Impacto:** Alto — degrada todas las recomendaciones.  
+**Mitigación:** El benchmark de la Fase 1 (>60% coincidencia) detectará este problema. Soluciones: enriquecer más las expansiones semánticas en `taxonomy/constants.py`, probar `text-embedding-3-large` para subcategorías problemáticas, considerar fine-tuning de un modelo local sentence-transformers en Fase 3.
+
+## R2 — Parsing de Filenames No Conformes
+
+**Riesgo:** Existen clips en la biblioteca con nombres que no siguen la convención. `taxonomy/parser.py` debe ser robusto a variaciones sin crashear.
+
+**Probabilidad:** Alta (ya detectados ~58 clips no conformes).  
+**Impacto:** Bajo-Medio — esos clips tendrán embeddings de menor calidad hasta ser reclasificados.  
+**Mitigación:** El reporte `needs_reclassification.txt` captura estos casos. M4 los procesa en lote con análisis visual. El sistema funciona con los 1,189 clips conformes mientras tanto.
+
+## R3 — Latencia de Transcripción en CPU
+
+**Riesgo:** faster-whisper modelo `small` en CPU i5 12th Gen puede tomar 30–60 segundos para audios de 3–4 minutos.
+
+**Probabilidad:** Media.  
+**Impacto:** Bajo — el usuario puede iniciar el proceso y hacer otra cosa.  
+**Mitigación:** Progress indicator visible. Si la latencia es inaceptable, migrar a la API de Whisper de OpenAI para transcripción < 10 segundos (a costo de ~$0.006 por minuto de audio).
+
+## R4 — Inconsistencias en la Taxonomía Existente
+
+**Riesgo:** Los prefijos inconsistentes (`NEUTRAL_` vs `N_`, `KID_` vs `KIDS_`, `M_RESULT_` en la carpeta `M/HOOK/`) pueden confundir al parser.
+
+**Probabilidad:** Alta (ya detectados).  
+**Impacto:** Medio — clips mal parseados tienen embeddings incorrectos.  
+**Mitigación:** `taxonomy/parser.py` incluye mapeo de prefijos legacy. Los clips afectados se reportan como `is_naming_compliant=False`. Lista detectada: prefijo `NEUTRAL` (legacy de `N`), prefijo `KID` (legacy de `KIDS`), archivos `.log` en carpetas de video (ignorar).
+
+## R5 — Clasificación Visual Incorrecta en M4
+
+**Riesgo:** GPT-4o Vision puede clasificar incorrectamente un clip nuevo, especialmente para clips abstractos o de animación.
+
+**Probabilidad:** Media (~10–15% de clips tendrán clasificación subóptima).  
+**Impacto:** Bajo con mitigación.  
+**Mitigación:** El flujo default siempre pide confirmación al usuario. Threshold de confianza < 0.75 → `needs_review/`. El prompt de Vision incluye la taxonomía real de la biblioteca para calibrar las respuestas.
+
+## R6 — La Carpeta `incoming/` Como Bottleneck
+
+**Riesgo:** Si M4 procesa clips lentamente (15–20 seg cada uno), y el productor descarga 10 clips de TikTok de golpe, la cola de procesamiento puede tardar 3–5 minutos.
+
+**Probabilidad:** Media.  
+**Impacto:** Bajo — es procesamiento en background.  
+**Mitigación:** M4 procesa en background (thread separado). El dashboard muestra una cola de "procesando" en tiempo real. El productor puede seguir trabajando mientras M4 clasifica.
+
+## R7 — Resistencia al Cambio de Workflow
+
+**Riesgo:** El mayor riesgo no es técnico — es que el sistema tenga fricción de adopción porque requiere cambiar hábitos consolidados.
+
+**Probabilidad:** Media.  
+**Impacto:** Alto.  
+**Mitigación:** El MVP no reemplaza nada. CapCut sigue siendo el editor. TikTok sigue siendo fuente de clips. El sistema solo añade una capa de inteligencia antes del trabajo en CapCut. El primer valor tangible — el bootstrap index completo con búsqueda desde CLI — debe lograrse en la Fase 0, antes de construir el dashboard.
+
+## R8 — Cache de CapCut en HDD Externo
+
+**El discovery identifica esto como un cuello de botella existente.** El movimiento manual de archivos del cache de CapCut al HDD externo y luego a la carpeta final es un paso que el sistema puede automatizar en Fase 2, con un watcher de la carpeta de exports de CapCut que automáticamente mueve el archivo procesado a la carpeta correcta con el nombre del proyecto.
+
+---
+
+# 18. Future Opportunities
+
+## FO-1 — CapCut Export Watcher
+
+Un watcher que observa la carpeta de exports de CapCut detecta cuando se genera un nuevo archivo de video procesado, lo copia automáticamente a la carpeta final del proyecto con el nombre correcto, y notifica al productor. Esto elimina los pasos manuales 15–19 del flujo actual (ir al cache, copiar, mover, renombrar).
+
+**Complejidad:** Baja. Solo watchdog + lógica de naming. **Impacto:** Alto en flujo de entrega.
+
+## FO-2 — CapCut Project Generator
+
+Si CapCut abre su formato de proyecto a scripting, el AI-COS puede generar un draft de proyecto de CapCut con los clips recomendados ya ordenados en el timeline, con duraciones basadas en los timestamps del transcript. Esto eliminaría el 60–70% del trabajo de edición manual.
+
+**Complejidad:** Alta (requiere reverse-engineering del formato de proyecto de CapCut o una API oficial).
+
+## FO-3 — Performance Feedback Loop
+
+Integrar datos de CTR y watch time de Meta Ads o TikTok Ads. Correlacionar qué tipos de hooks, secuencias de clips y combinaciones de funciones narrativas generan mejor performance. El sistema aprende qué creativos convierten y retroalimenta las recomendaciones.
+
+## FO-4 — Mapa de Cobertura de Biblioteca
+
+Un dashboard visual que muestra la "densidad" de la biblioteca por subcategoría: qué áreas tienen muchos clips (verde), cuáles tienen pocos (amarillo), cuáles están vacías (rojo). El productor puede ver de un vistazo qué descargar de TikTok esta semana para fortalecer áreas débiles. Basado en el análisis actual: CTA (rojo), MIX/SOCIAL_PROOF (rojo), KIDS (rojo), y varias subcategorías de AUTHORITY están en amarillo.
+
+## FO-5 — Generación IA Automática de Gaps
+
+Cuando los modelos de video IA (Sora, RunwayML Gen-3, Kling, Hailuo) alcancen calidad suficiente para performance marketing, el sistema puede generar automáticamente clips para gaps usando los prompts de M3, sin intervención humana. El clip generado pasa automáticamente por M4 y se indexa. El productor solo revisa y aprueba.
+
+## FO-6 — Perfiles de Producto
+
+El sistema mantiene perfiles por categoría de producto: hooks que funcionaron para "dolor de rodilla", animaciones más usadas para "visión", clips de RESULT más efectivos para "pérdida de peso". Cuando el productor empieza un nuevo creativo para un producto conocido, el sistema pre-carga el contexto histórico de ese tipo de producto y ajusta el boosting de taxonomía.
+
+## FO-7 — SaaS para Equipos
+
+La arquitectura local-first tiene un camino natural hacia SaaS: SQLite → PostgreSQL, ChromaDB → Pinecone/Weaviate Cloud, PyQt6 → Next.js, FastAPI → FastAPI en cloud. La biblioteca compartida entre productores permite que los golden prompts y el historial de feedback sean activos de equipo, no individuales. Los primeros usuarios son equipos de 2–5 productores de dropshipping.
+
+---
+
+# Appendix A — `config.yaml` Completo
+
+```yaml
+# AICOS Configuration v2.0
+
+version: "2.0"
+
+paths:
+  library_root: "E:/"                         # Raíz de la biblioteca actual
+  incoming_folder: "E:/incoming"              # Carpeta watched para clips nuevos
+  thumbnails_cache: "~/.aicos/thumbnails"
+  database: "~/.aicos/aicos.db"
+  vector_store: "~/.aicos/vector_store"
+  logs: "~/.aicos/logs"
+  exports: "~/.aicos/exports"                 # Output de análisis de proyectos
+
+transcription:
+  engine: "faster_whisper"                    # faster_whisper | openai_api
+  model: "small"                              # tiny | base | small | medium | large-v2
+  language: "es"
+  word_timestamps: true
+  device: "cpu"                               # cpu | cuda
+
+embeddings:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  dimensions: 1536
+
+llm:
+  provider: "openai"                          # openai | anthropic
+  model: "gpt-4o"
+  temperature: 0.3
+  max_tokens: 1000
+
+vision:
+  provider: "openai"
+  model: "gpt-4o"
+  classification_confidence_threshold: 0.75   # Por debajo → needs_review
+
+search:
+  default_n_results: 5
+  candidate_pool_size: 15                     # Candidatos antes del reranking
+  gap_threshold: 0.65                         # Score mínimo para no ser gap
+  narrative_function_boost: 0.20
+  gender_match_boost: 0.10
+  hook_category_boost: 0.25
+  repeat_clip_penalty: 0.15
+
+segmentation:
+  target_duration_ms: 2500
+  max_duration_ms: 4000
+  min_duration_ms: 800
+  hook_window_ms: 7000                        # Primeros N ms para hook detection
+  silence_threshold_ms: 400                   # Pausa mínima para boundary
+
+organizer:
+  auto_classify: false                        # Requiere confirmación del usuario
+  watch_interval_seconds: 1                   # Frecuencia de watchdog
+  batch_processing: true                      # Procesar múltiples clips en cola
+
+library:
+  # Prefijos legacy reconocidos (se normalizan internamente)
+  legacy_gender_prefixes:
+    "NEUTRAL": "N"
+    "KID": "KIDS"
+  
+  # Archivos a ignorar durante el scan
+  ignore_patterns:
+    - "*.log"
+    - "mssdk*"
+    - "*.txt"
+    - ".DS_Store"
+    - "Thumbs.db"
+  
+  # Carpetas a ignorar durante el scan  
+  ignore_folders:
+    - "mssdk"
+    - ".aicos"
+
+ui:
+  thumbnails_per_scene: 5
+  thumbnail_size: [160, 90]                   # Ancho x Alto en pixels
+  theme: "dark"
+```
+
+---
+
+# Appendix B — Convención de Naming — Referencia Rápida
+
+```
+{GENDER}_{FUNCTION}_{SUBCATEGORY}[_{CONTEXT}][_IA]_{VARIANT:02d}.{ext}
+
+GENDER:     F | M | N | MIX | KIDS
+FUNCTION:   HOOK | PROBLEM | BENEFIT | RESULT | AUTHORITY | SOCIAL_PROOF | NATURAL | CTA
+SUBCATEGORY: En MAYUSCULAS_SNAKE_CASE
+CONTEXT:    Opcional. Detalle adicional en MAYUSCULAS_SNAKE_CASE
+IA:         Sufijo opcional si el clip fue generado con IA
+VARIANT:    Número de 2 dígitos, empieza en 01
+
+Ejemplos válidos:
+  F_PROBLEM_KNEE_PAIN_STAIRS_01.mp4
+  M_HOOK_HAIR_PROBLEM_IA_01.mp4
+  N_AUTHORITY_ANIMATION_KNEE_ANIMATION_07.mp4
+  MIX_BENEFIT_DAILY_ROUTINE_COUPLE_CONTEX_SLEEPING_01.mp4
+  N_NATURAL_RAW_INGREDIENT_TURMERIC_01.mp4
+  F_SOCIAL_PROOF_TESTIMONIAL_SELFIE_SATISFIED_WOMAN_03.mp4
+
+Ejemplos NO válidos (existentes en biblioteca que necesitan reclasificación):
+  clearzal pain relieving gel 03(12)-1.mp4
+  TEMPRORAL(1)-1.mp4
+  V3_Pelvic Floor Massager 02(1)-1.mp4
+  KID_AUTHORITY_DEVELOPMENT_01.mp4  → debería ser KIDS_AUTHORITY_DEVELOPMENT_01.mp4
+```
+
+---
+
+*PRD versión 2.0 — AI Creative Operating System*  
+*Basado en análisis real de biblioteca de ~1,247 clips con taxonomía de 5 ejes*  
+*Construido para un productor individual. Diseñado para escalar a un equipo.*

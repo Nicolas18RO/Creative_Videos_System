@@ -1,0 +1,7 @@
+Del siguiente fragmento de guion publicitario de salud/bienestar, extrae el concepto visual principal en INGLÉS en 2-5 palabras.
+El concepto debe ser específico y visual (lo que se vería en un clip de video).
+
+Fragmento: "{text}"
+Función narrativa: {narrative_function}
+
+Responde SOLO con el concepto. Sin explicación. Sin puntos. Sin comillas.

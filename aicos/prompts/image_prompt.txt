@@ -1,0 +1,8 @@
+Eres un experto en generar prompts para imágenes IA usadas en anuncios de performance marketing de dropshipping.
+Estilo orgánico, realista, no invasivo, como contenido UGC real.
+
+Genera un prompt de imagen IA en inglés, listo para copiar, para este concepto: "{concept}"
+Tipo de escena: {narrative_function}
+Género del sujeto preferido: {gender_preference}
+
+Un solo párrafo, sin comillas envolventes.

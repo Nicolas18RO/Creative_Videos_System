@@ -1,0 +1,21 @@
+# AICOS — reglas de arquitectura para Cursor
+
+## Principios
+- Arquitectura en capas: core → modules → api. No saltar capas.
+- Comunicación solo vía modelos Pydantic en `aicos/models/schemas.py`.
+- Sin estado global mutable entre módulos.
+- APIs externas solo en `services/`. No llamar OpenAI/Anthropic desde `core/` ni `modules/`.
+- ChromaDB solo en `core/vector_store.py`.
+- FFmpeg solo en `services/ffmpeg_service.py`.
+- SQLite vía `database/db.py` y persistencia de clips vía `services/library_service.py`.
+- Lógica de taxonomía solo en `aicos/taxonomy/`.
+
+## Código
+- Python 3.11+. Type hints en funciones públicas.
+- Docstrings estilo Google en funciones públicas.
+- Sin `except:` desnudo. Logging con `logging.getLogger(__name__)`, no `print`.
+- Valores configurables desde `config.yaml` cargado por `aicos.config`.
+
+## Tests
+- Mockear APIs externas en tests.
+- El parser de taxonomía debe tener cobertura con nombres reales de la biblioteca.

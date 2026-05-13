@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aicos"
+version = "0.1.0"
+description = "AI Creative Operating System — capa semántica local-first sobre biblioteca de clips"
+requires-python = ">=3.11,<3.12"
+license = { text = "Proprietary" }
+dependencies = [
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "PyYAML>=6.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "sqlalchemy>=2.0",
+    "chromadb>=0.4",
+    "sentence-transformers>=2.2",
+    "torch>=2.1",
+    "tokenizers>=0.15",
+    "openai>=1.30",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+ui = [
+    "PyQt6>=6.6",
+]
+ml = [
+    "faster-whisper>=1.0",
+    "spacy>=3.7",
+]
+cinematic = [
+    "open-clip-torch>=2.24.0",
+    "Pillow>=10.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+aicos-bootstrap = "aicos.scripts.bootstrap_index:main"
+aicos-reindex-vectors = "aicos.scripts.reindex_vectors:main"
+aicos-batch-openclip = "aicos.scripts.batch_openclip:main"
+aicos-regen-chroma-fingerprints = "aicos.scripts.regenerate_chroma_fingerprints:main"
+aicos-analyze = "aicos.scripts.analyze_audio:main"
+aicos-dashboard = "aicos.frontend.dashboard:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aicos"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,204 @@
+# AICOS — configuración local (ajusta rutas a tu máquina)
+version: "2.0"
+
+runtime:
+  use_openai: false
+  offline_mode: true
+  local_only: true
+
+paths:
+  library_root: "E:/CREATIVE VIDEOS/CLIPS_MASTER"
+  incoming_folder: "C:/Users/nicor/Videos/Temporal"
+  thumbnails_cache: "~/.aicos/thumbnails"
+  database: "~/.aicos/aicos.db"
+  vector_store: "~/.aicos/vector_store"
+  logs: "~/.aicos/logs"
+  exports: "~/.aicos/exports"
+
+transcription:
+  engine: "faster_whisper"
+  model: "small"
+  language: "es"
+  word_timestamps: true
+  device: "cpu"
+
+embeddings:
+  provider: "local"
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  dimensions: 384
+  device: "auto"
+  batch_size: 32
+  normalize_embeddings: true
+  # Opcional: otra colección al cambiar de modelo/dimensión (p. ej. clips_minilm_v1)
+  collection_name: "clips_minilm_v1"
+
+llm:
+  provider: "local"
+  model: "gpt-4o"
+  temperature: 0.3
+  max_tokens: 1000
+
+vision:
+  provider: "local"
+  model: "gpt-4o"
+  classification_confidence_threshold: 0.75
+
+search:
+  default_n_results: 5
+  candidate_pool_size: 15
+  gap_threshold: 0.65
+  narrative_function_boost: 0.20
+  gender_match_boost: 0.10
+  hook_category_boost: 0.25
+  repeat_clip_penalty: 0.15
+
+intelligence:
+  half_life_days: 30.0
+  max_intelligence_boost: 0.12
+  min_intelligence_boost: -0.08
+  search_exposure_weight: 0.012
+  feedback_positive_weight: 0.055
+  feedback_negative_weight: -0.045
+  event_lookback_days: 120
+  audio_segment_signal_weight: 0.011
+  audio_repeat_clip_penalty: 0.022
+
+segmentation:
+  target_duration_ms: 2500
+  max_duration_ms: 4000
+  min_duration_ms: 800
+  hook_window_ms: 7000
+  silence_threshold_ms: 400
+
+organizer:
+  auto_classify: false
+  watch_interval_seconds: 1
+  batch_processing: true
+
+incoming_watcher:
+  enabled: false
+  settle_seconds: 2.0
+  write_sidecar: true
+
+library:
+  legacy_gender_prefixes:
+    NEUTRAL: "N"
+    KID: "KIDS"
+  ignore_patterns:
+    - "*.log"
+    - "mssdk*"
+    - "*.txt"
+    - ".DS_Store"
+    - "Thumbs.db"
+  ignore_folders:
+    - "mssdk"
+    - ".aicos"
+
+ui:
+  thumbnails_per_scene: 5
+  thumbnail_size: [160, 90]
+  theme: "dark"
+
+# Inteligencia cinematográfica (Clean Architecture: domain/application + persistencia en SQLite).
+cinematic_intel:
+  narrative_provider_order: ["local_llm", "rules", "future_openai"]
+  emotion_deterministic: true
+  weight_semantic_similarity: 0.28
+  weight_emotional_compatibility: 0.14
+  weight_narrative_compatibility: 0.14
+  weight_pacing_compatibility: 0.10
+  weight_cinematic_compatibility: 0.10
+  weight_visual_intent_compatibility: 0.12
+  weight_feedback_score: 0.08
+  weight_historical_performance: 0.04
+  pipeline_max_keyframes: 4
+  pipeline_keyframe_width: 320
+  pipeline_keyframe_height: 180
+
+# Fase 2: Contextual Retrieval Engine (reranking post-vectorial; no modifica Chroma).
+contextual_retrieval:
+  enabled: true
+  top_k_rerank: 40
+  lazy_rerank: true
+  use_batch_context_embedding: false
+  embedding_batch_size: 16
+  embedding_blend: 0.0
+  diversity_balance_enabled: true
+  diversity_subcategory_penalty: 0.04
+  weight_semantic: 0.35
+  weight_global_context: 0.25
+  weight_narrative: 0.15
+  weight_domain: 0.10
+  weight_emotion: 0.05
+  weight_continuity: 0.05
+  weight_cinematic_style: 0.05
+
+# Fase 3: Narrative Memory System (SQLite + continuidad de sesión, sin APIs externas).
+narrative_memory:
+  enabled: true
+  window_size: 5
+  continuity_weight: 0.25
+  diversity_weight: 0.10
+  industry_lock_strength: 0.70
+  max_repeat_clip_penalty: 0.35
+  subcategory_loop_penalty: 0.12
+
+# Fase 4: Clip Usage Intelligence (anti-repetición, diversidad de origen/cluster, planes).
+clip_usage_intelligence:
+  enabled: true
+  persist_history: true
+  exact_clip_penalty: 0.95
+  same_source_penalty: 0.45
+  same_cluster_penalty: 0.65
+  diversity_weight: 0.30
+  continuity_weight: 0.40
+  hard_exclude_exact_reuse: true
+  min_alternatives_for_hard_exclude: 3
+  allow_same_clip: false
+  allow_same_source_video: true
+  allow_same_visual_cluster: true
+  max_reuse_penalty_cap: 1.0
+  narrative_overlap_penalty_scale: 0.35
+  temporal_repeat_penalty: 0.22
+
+# Fase 5: metadatos cinematográficos explícitos + huella visual opcional (OpenCLIP).
+cinematic_metadata:
+  enabled: true
+  openclip_enabled: false
+  openclip_model: "ViT-B-32"
+  openclip_pretrained: "laion2b_s34b_b79k"
+  index_visual_fingerprint_in_chroma: true
+
+# Fase 5.1: batch OpenCLIP (biblioteca → keyframes → embeddings → SQLite → Chroma).
+multimodal_batch:
+  enabled: true
+  batch_size: 8
+  keyframe_width: 224
+  keyframe_height: 224
+  update_chroma: true
+  skip_existing_same_model: true
+  max_clips: null
+
+# Fase 5.2: regeneración Chroma multimodal + ranking híbrido visual.
+multimodal_retrieval:
+  enabled: true
+  batch_size: 128
+  update_existing: true
+  skip_missing_fingerprints: true
+  persist_stats: true
+  enable_visual_similarity: true
+  visual_similarity_weight: 0.35
+  regenerate_metadata: true
+  max_failures: 50
+  strict_model_match: false
+  allow_visual_embedding_overwrite: false
+
+# Fase 5.3: API editorial + boosts opcionales en retrieval.
+editorial_metadata:
+  enabled: true
+  allow_editorial_overrides: true
+  enable_editorial_boosts: true
+  editorial_quality_weight: 0.20
+  cinematic_score_weight: 0.30
+  persist_feedback: true
+  enable_bulk_operations: true
