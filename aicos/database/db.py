@@ -19,6 +19,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     event,
     func,
@@ -153,6 +154,123 @@ class EditorialFeedbackRow(Base):
     visual_quality: Mapped[float] = mapped_column(Float, nullable=False)
     human_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+class CreativeTimelineRow(Base):
+    """Creativo editado exportable a dataset editorial (Fase 6.1)."""
+
+    __tablename__ = "creative_timelines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    audio_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    final_video_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    dataset_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    pattern_engine_report_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
+class TimelineSceneRow(Base):
+    """Escenas ordenadas con tiempo y señales visuales (FK a creative_timelines)."""
+
+    __tablename__ = "timeline_scenes"
+    __table_args__ = (
+        UniqueConstraint("creative_timeline_id", "scene_index", name="uq_timeline_scene_order"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_timeline_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_timelines.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    clip_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    start_time_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    end_time_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    duration_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    transition_type: Mapped[str] = mapped_column(String(64), nullable=False, default="cut")
+    narrative_role: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    motion_intensity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    visual_energy: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    camera_type: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    semantic_tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    emotion_tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+class CreativeStyleProfileRow(Base):
+    """Perfil de estilo 1:1 con un creative_timeline."""
+
+    __tablename__ = "creative_style_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_timeline_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("creative_timelines.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    hook_intensity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    average_pacing: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    motion_density: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    transition_density: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    narrative_aggressiveness: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    visual_dynamism: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cinematic_style_tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    pacing_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    hook_strength: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    emotional_curve_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
+class EditorialPatternRow(Base):
+    """Patrones editoriales extraídos (secuencias, no clips aislados)."""
+
+    __tablename__ = "editorial_patterns"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_timeline_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_timelines.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pattern_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    pattern_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    pattern_sequence_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    frequency: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence_score: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+class EditorialStyleEmbeddingRow(Base):
+    """Embedding de estilo editorial por creativo (Fase 6.3)."""
+
+    __tablename__ = "editorial_style_embeddings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("creative_timelines.creative_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    structural_vector_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    semantic_vector_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    fused_vector_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    digest_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    digest_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    structural_model_tag: Mapped[str] = mapped_column(String(64), nullable=False)
+    semantic_model_tag: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    fusion_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="concat_l2")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
 
 
 class ProjectRow(Base):
@@ -500,6 +618,44 @@ class ClipUsageHistoryRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
 
 
+class EditorialHumanFeedbackEventRow(Base):
+    """Fase 6.6: señales de refuerzo editorial humano (memoria acumulativa, sin Chroma)."""
+
+    __tablename__ = "editorial_human_feedback_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp(), index=True)
+    event_kind: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    reward: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    creative_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    clip_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    replaced_clip_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    scene_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    narrative_function: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    transition_type: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    query_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class EditorialTrainingSessionRow(Base):
+    """Fase 6.7: sesión de entrenamiento editorial humano-en-el-bucle."""
+
+    __tablename__ = "editorial_training_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default="draft")
+    final_video_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    audio_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    corrections_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    meta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
 _engine = None
 _SessionLocal = None
 
@@ -539,6 +695,8 @@ def init_db() -> None:
     Base.metadata.create_all(eng)
     _migrate_drop_unique_file_hash(eng)
     _migrate_scenes_add_global_context_id(eng)
+    _migrate_creative_timelines_pattern_engine_report(eng)
+    _migrate_editorial_training_sessions_meta_json(eng)
     logger.info("SQLite inicializado en %s", eng.url)
 
 
@@ -559,6 +717,38 @@ def _migrate_scenes_add_global_context_id(engine) -> None:
             text("CREATE INDEX IF NOT EXISTS ix_scenes_global_context_id ON scenes(global_context_id)")
         )
         logger.info("Migrando SQLite: añadida columna scenes.global_context_id")
+
+
+def _migrate_creative_timelines_pattern_engine_report(engine) -> None:
+    """Añade ``pattern_engine_report_json`` a ``creative_timelines`` (Fase 6.2)."""
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='creative_timelines'")
+        ).scalar_one_or_none()
+        if not exists:
+            return
+        rows = conn.execute(text("PRAGMA table_info(creative_timelines)")).fetchall()
+        names = {r[1] for r in rows}
+        if "pattern_engine_report_json" in names:
+            return
+        conn.execute(text("ALTER TABLE creative_timelines ADD COLUMN pattern_engine_report_json JSON"))
+        logger.info("Migrando SQLite: añadida columna creative_timelines.pattern_engine_report_json")
+
+
+def _migrate_editorial_training_sessions_meta_json(engine) -> None:
+    """Añade ``meta_json`` a ``editorial_training_sessions`` (Fase 6.7 UI)."""
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='editorial_training_sessions'")
+        ).scalar_one_or_none()
+        if not exists:
+            return
+        rows = conn.execute(text("PRAGMA table_info(editorial_training_sessions)")).fetchall()
+        names = {r[1] for r in rows}
+        if "meta_json" in names:
+            return
+        conn.execute(text("ALTER TABLE editorial_training_sessions ADD COLUMN meta_json JSON"))
+        logger.info("Migrando SQLite: añadida columna editorial_training_sessions.meta_json")
 
 
 def _migrate_drop_unique_file_hash(engine) -> None:

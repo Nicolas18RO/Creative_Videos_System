@@ -159,6 +159,10 @@ class Recommendation(BaseModel):
     similarity_score: float
     taxonomy_boost: float
     intelligence_boost: float = 0.0
+    editorial_learning_boost: float = Field(
+        default=0.0,
+        description="Refuerzo Fase 6.6 desde feedback humano editorial acumulado (SQLite).",
+    )
     final_score: float
     narrative_function: str | None = None
     gender: str | None = None
@@ -479,6 +483,28 @@ class FeedbackRequest(BaseModel):
     clip_id: str
     accepted: bool
     rank: int | None = None
+    record_editorial_human_feedback: bool = Field(
+        default=False,
+        description="Si true, registra también un evento Fase 6.6 (memoria editorial acumulativa).",
+    )
+
+
+class EditorialHumanFeedbackIngestRequest(BaseModel):
+    """Ingesta explícita de señal editorial humana (Fase 6.6)."""
+
+    event_kind: str = Field(..., max_length=48)
+    reward: float = Field(..., ge=-1.0, le=1.0)
+    creative_id: str | None = Field(default=None, max_length=128)
+    clip_id: str | None = Field(default=None, max_length=64)
+    replaced_clip_id: str | None = Field(default=None, max_length=64)
+    scene_index: int | None = None
+    narrative_function: str | None = Field(default=None, max_length=32)
+    transition_type: str | None = Field(default=None, max_length=48)
+    query_fingerprint: str | None = Field(default=None, max_length=64)
+
+
+class EditorialHumanFeedbackIngestResponse(BaseModel):
+    event_id: str
 
 
 class FeedbackResponse(BaseModel):
@@ -955,3 +981,201 @@ class EditorialClusterListResponse(BaseModel):
     limit: int
     offset: int
     clips: list[EditorialMetadataSchema] = Field(default_factory=list)
+
+
+# --- Fase 6.1: Editorial Timeline Dataset (presentación API) ---
+
+
+class EditorialDatasetSceneIn(BaseModel):
+    """Escena de timeline creativo para ingest por API."""
+
+    scene_index: int
+    clip_id: str = ""
+    start_time: float = 0.0
+    end_time: float = 0.0
+    transition_type: str = "cut"
+    narrative_role: str = ""
+    motion_intensity: float = 0.0
+    visual_energy: float = 0.0
+    camera_type: str = ""
+    semantic_tags: list[str] = Field(default_factory=list)
+    emotion_tags: list[str] = Field(default_factory=list)
+
+
+class EditorialDatasetBuildRequest(BaseModel):
+    creative_id: str
+    audio_path: str = ""
+    final_video_path: str = ""
+    scenes: list[EditorialDatasetSceneIn] = Field(default_factory=list)
+
+
+class EditorialDatasetBuildFromJsonRequest(BaseModel):
+    """Ruta a JSON de timeline (resuelta con paths del sistema)."""
+
+    timeline_json_path: str
+
+
+class EditorialDatasetExportJsonlRequest(BaseModel):
+    creative_ids: list[str] = Field(default_factory=list, max_length=200)
+    output_filename: str = "creative_dataset.jsonl"
+
+
+# --- Fase 6.7: Editorial training workspace ---
+
+
+class EditorialTrainingSessionCreateRequest(BaseModel):
+    """Creación de sesión con metadatos legibles para la UI (sin JSON manual)."""
+
+    creative_id: str = Field(default="", max_length=128)
+    project_id: str | None = Field(default=None, max_length=36)
+    project_name: str = Field(default="", max_length=512)
+    creative_name: str = Field(default="", max_length=512)
+    product_category: str = Field(default="", max_length=256)
+    notes: str = Field(default="", max_length=4000)
+    final_video_path: str = ""
+    audio_path: str = ""
+
+
+class EditorialTrainingCorrectionItemIn(BaseModel):
+    event_kind: str = Field(..., max_length=48)
+    reward: float = Field(..., ge=-1.0, le=1.0)
+    clip_id: str | None = Field(default=None, max_length=64)
+    replaced_clip_id: str | None = Field(default=None, max_length=64)
+    scene_index: int | None = None
+    narrative_function: str | None = Field(default=None, max_length=32)
+    transition_type: str | None = Field(default=None, max_length=48)
+
+
+class EditorialTrainingCorrectionsRequest(BaseModel):
+    items: list[EditorialTrainingCorrectionItemIn] = Field(default_factory=list, max_length=200)
+
+
+class EditorialTrainingTimelineSubmitRequest(BaseModel):
+    scenes: list[EditorialDatasetSceneIn] = Field(default_factory=list)
+
+
+class TimelineSceneViewModel(BaseModel):
+    """Escena lista para UI (timeline cinematográfico)."""
+
+    scene_index: int
+    thumbnail_url: str = ""
+    scene_type_label: str = ""
+    narrative_role: str = ""
+    time_start: float = 0.0
+    time_end: float = 0.0
+    duration_seconds: float = 0.0
+    energy_label: str = ""
+    motion_intensity: float = 0.0
+    visual_energy: float = 0.0
+    transition_type: str = "cut"
+    semantic_tags: list[str] = Field(default_factory=list)
+    emotion_tags: list[str] = Field(default_factory=list)
+    clip_id: str = ""
+
+
+class EditorialTrainingSummaryViewModel(BaseModel):
+    """Resumen agregado antes del commit de aprendizaje."""
+
+    total_scenes: int = 0
+    hooks_detected: int = 0
+    pacing_score: float = 0.0
+    average_pacing: float = 0.0
+    motion_density: float = 0.0
+    style_visual_dynamism: float = 0.0
+    corrections_applied: int = 0
+    clip_accept_count: int = 0
+    clip_reject_count: int = 0
+
+
+class EditorialTrainingSessionOut(BaseModel):
+    session_id: str
+    creative_id: str
+    project_id: str | None = None
+    status: str
+    final_video_path: str = ""
+    audio_path: str = ""
+    corrections_count: int = 0
+    created_at: str
+    updated_at: str
+    project_label: str = ""
+    creative_label: str = ""
+    product_category: str = ""
+    notes: str = ""
+
+
+class EditorialTrainingWorkspaceGetResponse(BaseModel):
+    session: EditorialTrainingSessionOut
+    timeline: dict | None = None
+    scene_cards: list[TimelineSceneViewModel] = Field(default_factory=list)
+    summary: EditorialTrainingSummaryViewModel | None = None
+
+
+class EditorialTrainingAnalyzeRequest(BaseModel):
+    session_id: str = Field(..., max_length=128)
+
+
+class UploadEditorialAssetResponse(BaseModel):
+    session_id: str
+    path: str
+    stored_filename: str
+    size_bytes: int
+    duration_ms: int | None = None
+
+
+class EditorialTrainingAnalyzeResponse(BaseModel):
+    session: EditorialTrainingSessionOut
+    timeline: dict | None = None
+    scene_cards: list[TimelineSceneViewModel] = Field(default_factory=list)
+    summary: EditorialTrainingSummaryViewModel | None = None
+    analysis_warning: str | None = None
+
+
+# --- Fase 6.4: Style retrieval (presentación API) ---
+
+
+class StyleRetrievalSimilarHitOut(BaseModel):
+    creative_id: str
+    rank: int
+    structural_similarity: float
+    semantic_similarity: float | None = None
+    hybrid_score: float
+    peer_digest_sha256: str = ""
+
+
+class StyleRetrievalSimilarResponse(BaseModel):
+    anchor_creative_id: str
+    hits: list[StyleRetrievalSimilarHitOut] = Field(default_factory=list)
+    chroma_pool_size: int = 0
+    used_semantic_hybrid: bool = False
+
+
+# --- Fase 6.5: Editorial recommendation engine (presentación API) ---
+
+
+class StyleMemoryPeerOut(BaseModel):
+    creative_id: str
+    hybrid_score: float
+
+
+class EditorialRecommendationItemOut(BaseModel):
+    recommendation_id: str
+    kind: str
+    summary: str
+    detail: str
+    confidence: float
+    sources: list[str] = Field(default_factory=list)
+
+
+class ClipSearchContextHintOut(BaseModel):
+    query_line: str
+    global_query_enrichment: str
+    narrative_function_hint: str | None = None
+    is_hook_context: bool = False
+    semantic_tags: list[str] = Field(default_factory=list)
+
+
+class EditorialRecommendationPlanResponse(BaseModel):
+    anchor_creative_id: str
+    items: list[EditorialRecommendationItemOut] = Field(default_factory=list)
+    clip_search_hint: ClipSearchContextHintOut | None = None
+    style_memory_peers: list[StyleMemoryPeerOut] = Field(default_factory=list)

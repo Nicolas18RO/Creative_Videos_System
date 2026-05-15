@@ -67,8 +67,9 @@ audio/
 coverage.xml
 htmlcov/
 
-# Build artifacts
-dist/
+# Frontend (Fase 6.7 React)
+frontend/node_modules/
+frontend/dist/
 build/
 *.egg-info/
 

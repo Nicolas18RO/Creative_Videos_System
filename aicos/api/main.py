@@ -12,11 +12,14 @@ from aicos.api.routers import (
     benchmark,
     cinematic_intel,
     decisions,
+    editorial_dataset,
     editorial_metadata,
+    editorial_training,
     feedback,
     gaps,
     health,
     hooks,
+    human_feedback,
     insights,
     library,
     organize,
@@ -69,5 +72,8 @@ app.include_router(benchmark.router, prefix="/benchmark", tags=["benchmark"])
 app.include_router(cinematic_intel.router, prefix="/cinematic", tags=["cinematic"])
 app.include_router(taxonomy.router, prefix="/taxonomy", tags=["taxonomy"])
 app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+app.include_router(human_feedback.router, prefix="/human-feedback", tags=["human_feedback"])
 app.include_router(editorial_metadata.router, prefix="/editorial", tags=["editorial"])
+app.include_router(editorial_dataset.router, prefix="/editorial-dataset", tags=["editorial_dataset"])
+app.include_router(editorial_training.router, prefix="/editorial-training", tags=["editorial_training"])
 app.include_router(projects.router, prefix="/projects", tags=["projects"])

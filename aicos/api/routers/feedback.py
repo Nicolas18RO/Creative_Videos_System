@@ -38,6 +38,34 @@ def post_feedback(body: FeedbackRequest) -> FeedbackResponse:
                     rank=body.rank,
                     narrative_function=scene.narrative_function,
                 )
+                if body.record_editorial_human_feedback:
+                    from aicos.config import get_config as _gf
+                    from aicos.application.human_feedback.human_feedback_reinforcement_service import (
+                        IngestEditorialHumanFeedbackCommand,
+                    )
+                    from aicos.services.human_feedback_reinforcement_factory import (
+                        build_human_feedback_reinforcement_service,
+                    )
+
+                    _cfg = _gf()
+                    if _cfg.human_feedback_reinforcement.enabled:
+                        hf = build_human_feedback_reinforcement_service(_cfg)
+                        rk = 1.0 if body.accepted else -1.0
+                        kind = "clip_accept" if body.accepted else "clip_reject"
+                        hf.ingest(
+                            session,
+                            IngestEditorialHumanFeedbackCommand(
+                                event_kind=kind,
+                                reward=rk,
+                                creative_id=None,
+                                clip_id=body.clip_id,
+                                replaced_clip_id=None,
+                                scene_index=scene.scene_index,
+                                narrative_function=scene.narrative_function,
+                                transition_type=None,
+                                query_fingerprint=None,
+                            ),
+                        )
     if n == 0:
         raise HTTPException(
             status_code=404,

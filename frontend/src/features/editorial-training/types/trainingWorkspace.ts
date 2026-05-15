@@ -1,0 +1,90 @@
+/** Contratos alineados con la API FastAPI (presentación). */
+
+export type EditorialTrainingSessionDto = {
+  session_id: string;
+  creative_id: string;
+  project_id: string | null;
+  status: string;
+  final_video_path: string;
+  audio_path: string;
+  corrections_count: number;
+  created_at: string;
+  updated_at: string;
+  project_label: string;
+  creative_label: string;
+  product_category: string;
+  notes: string;
+};
+
+export type TimelineSceneCardDto = {
+  scene_index: number;
+  thumbnail_url: string;
+  scene_type_label: string;
+  narrative_role: string;
+  time_start: number;
+  time_end: number;
+  duration_seconds: number;
+  energy_label: string;
+  motion_intensity: number;
+  visual_energy: number;
+  transition_type: string;
+  semantic_tags: string[];
+  emotion_tags: string[];
+  clip_id: string;
+};
+
+export type EditorialTrainingSummaryDto = {
+  total_scenes: number;
+  hooks_detected: number;
+  pacing_score: number;
+  average_pacing: number;
+  motion_density: number;
+  style_visual_dynamism: number;
+  corrections_applied: number;
+  clip_accept_count: number;
+  clip_reject_count: number;
+};
+
+export type EditorialTrainingWorkspaceGetDto = {
+  session: EditorialTrainingSessionDto;
+  timeline: Record<string, unknown> | null;
+  scene_cards: TimelineSceneCardDto[];
+  summary: EditorialTrainingSummaryDto | null;
+};
+
+export type UploadAssetDto = {
+  session_id: string;
+  path: string;
+  stored_filename: string;
+  size_bytes: number;
+  duration_ms: number | null;
+};
+
+export type EditorialTrainingAnalyzeResponseDto = {
+  session: EditorialTrainingSessionDto;
+  timeline: Record<string, unknown> | null;
+  scene_cards: TimelineSceneCardDto[];
+  summary: EditorialTrainingSummaryDto | null;
+  analysis_warning: string | null;
+};
+
+export type TrainingStepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export type EditableScene = TimelineSceneCardDto & {
+  editor_notes: string;
+  editorial_status: "pending" | "accepted" | "rejected";
+};
+
+export type TimelineScenePayload = {
+  scene_index: number;
+  clip_id: string;
+  start_time: number;
+  end_time: number;
+  transition_type: string;
+  narrative_role: string;
+  motion_intensity: number;
+  visual_energy: number;
+  camera_type: string;
+  semantic_tags: string[];
+  emotion_tags: string[];
+};

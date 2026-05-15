@@ -162,15 +162,41 @@ def run_search(
         ).items():
             boosts[cid] = boosts.get(cid, 0.0) + pen
 
+    hf_boosts: dict[str, float] = {}
+    if (
+        app_cfg is not None
+        and req.apply_intelligence
+        and recs
+        and getattr(app_cfg, "human_feedback_reinforcement", None) is not None
+    ):
+        hfc = app_cfg.human_feedback_reinforcement
+        if hfc.enabled and hfc.apply_in_search:
+            try:
+                from aicos.services.human_feedback_reinforcement_factory import (
+                    build_human_feedback_reinforcement_service,
+                )
+
+                hf_svc = build_human_feedback_reinforcement_service(app_cfg)
+                hf_boosts = hf_svc.compute_clip_boosts(
+                    session,
+                    clip_ids=[r.clip_id for r in recs],
+                    narrative_function=req.narrative_function,
+                    _query_fingerprint=fp,
+                )
+            except Exception as e:
+                logger.warning("[HumanFeedbackReinforcement] boost_compute_skip error=%s", e)
+
     adjusted: list[Recommendation] = []
     for r in recs:
         ib = float(boosts.get(r.clip_id, 0.0))
+        elb = float(hf_boosts.get(r.clip_id, 0.0))
         # ``final_score`` puede incluir reranking contextual (híbrido + taxonomía); no re-sumar taxonomía.
-        fs = max(0.0, min(1.0, float(r.final_score) + ib))
+        fs = max(0.0, min(1.0, float(r.final_score) + ib + elb))
         adjusted.append(
             r.model_copy(
                 update={
                     "intelligence_boost": ib,
+                    "editorial_learning_boost": elb,
                     "final_score": fs,
                 }
             )
@@ -188,12 +214,13 @@ def run_search(
             gdom = (context.global_context.industry or "")[:64]
         logger.info(
             "[FinalSelection] scene_index=%s correlation_id=%s selected_clip=%s final_score=%.4f "
-            "intelligence_boost=%.4f is_gap=%s global_domain=%s",
+            "intelligence_boost=%.4f editorial_learning_boost=%.4f is_gap=%s global_domain=%s",
             getattr(context, "scene_index", None),
             context.correlation_id or "",
             top[0].clip_id,
             float(top[0].final_score),
             float(top[0].intelligence_boost),
+            float(top[0].editorial_learning_boost),
             is_gap,
             gdom,
         )

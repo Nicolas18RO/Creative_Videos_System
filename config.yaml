@@ -14,6 +14,7 @@ paths:
   vector_store: "~/.aicos/vector_store"
   logs: "~/.aicos/logs"
   exports: "~/.aicos/exports"
+  editorial_training_uploads: "~/.aicos/editorial_training/uploads"
 
 transcription:
   engine: "faster_whisper"
@@ -202,3 +203,73 @@ editorial_metadata:
   cinematic_score_weight: 0.30
   persist_feedback: true
   enable_bulk_operations: true
+
+# Fase 6.1: Creative Timeline Dataset Builder (aprendizaje editorial, no retrieval).
+editorial_dataset:
+  enabled: true
+  detect_hooks: true
+  detect_patterns: true
+  export_jsonl: true
+  export_parquet: false
+  min_hook_duration: 0.5
+  max_hook_duration: 5.0
+
+# Fase 6.2: Editorial Pattern Extraction Engine (F4+F5+timeline).
+editorial_pattern_engine:
+  enabled: true
+  use_cinematic_enrichment: true
+  use_library_taxonomy: true
+  use_clip_usage_history: true
+  detect_cut_bursts: true
+  detect_momentum_reversals: true
+  narrative_arc_detection: true
+
+# Fase 6.3: embeddings de estilo editorial (estructural + semántico opcional).
+editorial_style_embedding:
+  enabled: true
+  enable_semantic_embedding: false
+  structural_model_tag: "aicos_structural_v1"
+  semantic_model_tag: ""
+  fusion_mode: "concat_l2"
+  max_fused_dimension: 512
+  digest_max_chars: 8000
+
+# Fase 6.4: recuperación por similitud editorial (Chroma estructural + rerank semántico opcional).
+editorial_style_retrieval:
+  enabled: true
+  collection_name: "editorial_style_structural_v1"
+  top_k_default: 10
+  rerank_pool_size: 40
+  enable_semantic_rerank: true
+  hybrid_weight_structural: 0.65
+  hybrid_weight_semantic: 0.35
+
+# Fase 6.5: motor de recomendaciones editoriales (decisión + RAG hacia búsqueda de clips).
+editorial_recommendation_engine:
+  enabled: true
+  use_style_memory: true
+  style_memory_top_k: 5
+  style_memory_min_peer_score: 0.2
+  pacing_high_threshold: 0.72
+  pacing_low_threshold: 0.35
+
+# Fase 6.6: refuerzo editorial por feedback humano (memoria SQLite → ranking).
+human_feedback_reinforcement:
+  enabled: true
+  apply_in_search: true
+  signal_weight: 0.055
+  swap_penalty_ratio: 0.5
+  lookback_days: 120
+  half_life_days: 30.0
+  narrative_mismatch_factor: 0.35
+  max_boost_per_clip: 0.09
+  min_boost_per_clip: -0.075
+
+# Fase 6.7: workspace de entrenamiento editorial (sesiones + timeline + aprendizaje).
+editorial_training_workspace:
+  enabled: true
+  max_upload_mb: 800
+  allowed_video_extensions: [".mp4", ".mov", ".m4v"]
+  allowed_audio_extensions: [".wav", ".mp3", ".m4a", ".flac"]
+  analyze_include_clip_search: false
+  analyze_enable_intelligence: false

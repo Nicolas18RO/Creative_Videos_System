@@ -34,6 +34,7 @@ class PathsConfig(BaseModel):
     vector_store: str = "~/.aicos/vector_store"
     logs: str = "~/.aicos/logs"
     exports: str = "~/.aicos/exports"
+    editorial_training_uploads: str = "~/.aicos/editorial_training/uploads"
 
 
 class TranscriptionConfig(BaseModel):
@@ -262,6 +263,90 @@ class EditorialMetadataConfig(BaseModel):
     enable_bulk_operations: bool = True
 
 
+class EditorialDatasetConfig(BaseModel):
+    """Fase 6.1: construcción de datasets editoriales desde timelines creativos."""
+
+    enabled: bool = True
+    detect_hooks: bool = True
+    detect_patterns: bool = True
+    export_jsonl: bool = True
+    export_parquet: bool = False
+    min_hook_duration: float = 0.5
+    max_hook_duration: float = 5.0
+
+
+class EditorialPatternEngineConfig(BaseModel):
+    """Fase 6.2: motor de patrones editoriales (integración F4/F5/6.1)."""
+
+    enabled: bool = True
+    use_cinematic_enrichment: bool = True
+    use_library_taxonomy: bool = True
+    use_clip_usage_history: bool = True
+    detect_cut_bursts: bool = True
+    detect_momentum_reversals: bool = True
+    narrative_arc_detection: bool = True
+
+
+class EditorialStyleEmbeddingConfig(BaseModel):
+    """Fase 6.3: embeddings de estilo editorial (estructural + semántico opcional)."""
+
+    enabled: bool = True
+    enable_semantic_embedding: bool = False
+    structural_model_tag: str = "aicos_structural_v1"
+    semantic_model_tag: str = ""
+    fusion_mode: str = "concat_l2"
+    max_fused_dimension: int = 512
+    digest_max_chars: int = 8000
+
+
+class EditorialStyleRetrievalConfig(BaseModel):
+    """Fase 6.4: recuperación por similitud editorial (índice estructural + rerank semántico opcional)."""
+
+    enabled: bool = True
+    collection_name: str = "editorial_style_structural_v1"
+    top_k_default: int = 10
+    rerank_pool_size: int = 40
+    enable_semantic_rerank: bool = True
+    hybrid_weight_structural: float = 0.65
+    hybrid_weight_semantic: float = 0.35
+
+
+class EditorialRecommendationEngineConfig(BaseModel):
+    """Fase 6.5: decisiones editoriales asistidas (memoria de estilo + guías + puente a búsqueda de clips)."""
+
+    enabled: bool = True
+    use_style_memory: bool = True
+    style_memory_top_k: int = 5
+    style_memory_min_peer_score: float = 0.2
+    pacing_high_threshold: float = 0.72
+    pacing_low_threshold: float = 0.35
+
+
+class HumanFeedbackReinforcementConfig(BaseModel):
+    """Fase 6.6: aprendizaje editorial acumulativo desde feedback humano (refuerzo en ranking)."""
+
+    enabled: bool = True
+    apply_in_search: bool = True
+    signal_weight: float = 0.055
+    swap_penalty_ratio: float = 0.5
+    lookback_days: int = 120
+    half_life_days: float = 30.0
+    narrative_mismatch_factor: float = 0.35
+    max_boost_per_clip: float = 0.09
+    min_boost_per_clip: float = -0.075
+
+
+class EditorialTrainingWorkspaceConfig(BaseModel):
+    """Fase 6.7: workspace de entrenamiento editorial (sesiones, timeline, correcciones, commit)."""
+
+    enabled: bool = True
+    max_upload_mb: int = 800
+    allowed_video_extensions: list[str] = Field(default_factory=lambda: [".mp4", ".mov", ".m4v"])
+    allowed_audio_extensions: list[str] = Field(default_factory=lambda: [".wav", ".mp3", ".m4a", ".flac"])
+    analyze_include_clip_search: bool = False
+    analyze_enable_intelligence: bool = False
+
+
 class AppConfig(BaseModel):
     version: str = "2.0"
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
@@ -285,6 +370,19 @@ class AppConfig(BaseModel):
     multimodal_batch: MultimodalBatchConfig = Field(default_factory=MultimodalBatchConfig)
     multimodal_retrieval: MultimodalRetrievalConfig = Field(default_factory=MultimodalRetrievalConfig)
     editorial_metadata: EditorialMetadataConfig = Field(default_factory=EditorialMetadataConfig)
+    editorial_dataset: EditorialDatasetConfig = Field(default_factory=EditorialDatasetConfig)
+    editorial_pattern_engine: EditorialPatternEngineConfig = Field(default_factory=EditorialPatternEngineConfig)
+    editorial_style_embedding: EditorialStyleEmbeddingConfig = Field(default_factory=EditorialStyleEmbeddingConfig)
+    editorial_style_retrieval: EditorialStyleRetrievalConfig = Field(default_factory=EditorialStyleRetrievalConfig)
+    editorial_recommendation_engine: EditorialRecommendationEngineConfig = Field(
+        default_factory=EditorialRecommendationEngineConfig
+    )
+    human_feedback_reinforcement: HumanFeedbackReinforcementConfig = Field(
+        default_factory=HumanFeedbackReinforcementConfig
+    )
+    editorial_training_workspace: EditorialTrainingWorkspaceConfig = Field(
+        default_factory=EditorialTrainingWorkspaceConfig
+    )
 
     def resolved_paths(self) -> dict[str, Path]:
         return {
@@ -295,6 +393,7 @@ class AppConfig(BaseModel):
             "vector_store": _expand(self.paths.vector_store),
             "logs": _expand(self.paths.logs),
             "exports": _expand(self.paths.exports),
+            "editorial_training_uploads": _expand(self.paths.editorial_training_uploads),
         }
 
 
