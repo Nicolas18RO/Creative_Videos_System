@@ -27,6 +27,20 @@ class EditorialTrainingAnalyzeService:
         self._workspace = workspace
         self._cfg = workspace_cfg
 
+    def _maybe_generate_visual_previews(self, session: Any, creative_id: str) -> None:
+        from aicos.config import get_config
+
+        app = get_config()
+        if not app.timeline_visualization.enabled or not app.timeline_visualization.auto_generate_after_analyze:
+            return
+        try:
+            from aicos.services.timeline_visualization_factory import build_timeline_visualization_service
+
+            viz = build_timeline_visualization_service(app)
+            viz.generate_previews(session, creative_id)
+        except Exception:
+            logger.exception("[EditorialTraining] visual_preview_generation_failed creative=%s", creative_id)
+
     async def run(self, session: Any, session_id: str) -> tuple[CreativeTimeline, AnalyzeAPIResponse]:
         from aicos.modules.script_analyzer import analyze_audio
 
@@ -59,6 +73,7 @@ class EditorialTrainingAnalyzeService:
             if not raw:
                 raise ValueError("editorial_training_analyze_empty_scenes")
             timeline = self._workspace.submit_timeline(session, session_id, raw)
+            self._maybe_generate_visual_previews(session, timeline.creative_id)
             logger.info(
                 "[EditorialTraining] analyze_done session=%s scenes=%s warning=%s",
                 session_id,

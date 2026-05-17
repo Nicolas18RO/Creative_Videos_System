@@ -19,6 +19,8 @@ export type EditorialTrainingSessionDto = {
 export type TimelineSceneCardDto = {
   scene_index: number;
   thumbnail_url: string;
+  preview_video_url: string;
+  hook_score: number;
   scene_type_label: string;
   narrative_role: string;
   time_start: number;
@@ -31,6 +33,9 @@ export type TimelineSceneCardDto = {
   semantic_tags: string[];
   emotion_tags: string[];
   clip_id: string;
+  review_status?: string;
+  confidence_score?: number;
+  merged_into_scene_id?: string | null;
 };
 
 export type EditorialTrainingSummaryDto = {
@@ -50,6 +55,7 @@ export type EditorialTrainingWorkspaceGetDto = {
   timeline: Record<string, unknown> | null;
   scene_cards: TimelineSceneCardDto[];
   summary: EditorialTrainingSummaryDto | null;
+  review_summary?: EditorialReviewSummaryDto | null;
 };
 
 export type UploadAssetDto = {
@@ -70,9 +76,63 @@ export type EditorialTrainingAnalyzeResponseDto = {
 
 export type TrainingStepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
+export type ReviewStatus = "pending" | "accepted" | "rejected" | "merged" | "edited";
+
+export type EditorialReviewSummaryDto = {
+  session_id: string;
+  total_scenes: number;
+  pending: number;
+  accepted: number;
+  rejected: number;
+  merged: number;
+  edited: number;
+  scene_states: Array<{
+    scene_id: string;
+    status: string;
+    reviewed_at: string | null;
+    reviewer: string;
+    correction_reason: string;
+    merged_into_scene_id: string | null;
+    confidence_override: number | null;
+    notes: string;
+  }>;
+  pending_scene_ids: string[];
+  warnings: string[];
+};
+
 export type EditableScene = TimelineSceneCardDto & {
   editor_notes: string;
+  review_status: ReviewStatus;
+  /** @deprecated use review_status */
   editorial_status: "pending" | "accepted" | "rejected";
+};
+
+export type TimelineClipPreviewDto = {
+  clip_id: string;
+  scene_index: number;
+  thumbnail_url: string;
+  preview_video_url: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  motion_score: number;
+  narrative_role: string;
+  visual_cluster_id: string;
+  timeline_position: number;
+};
+
+export type TimelineVisualTrackDto = {
+  creative_id: string;
+  timeline_duration: number;
+  clip_previews: TimelineClipPreviewDto[];
+  pacing_density: number[];
+  transition_density: number[];
+  motion_curve: number[];
+};
+
+export type TimelineVisualizationDto = {
+  track: TimelineVisualTrackDto;
+  scene_count: number;
 };
 
 export type TimelineScenePayload = {

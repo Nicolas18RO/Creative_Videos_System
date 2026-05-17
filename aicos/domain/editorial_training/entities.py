@@ -47,3 +47,19 @@ class EditorialTrainingSession:
     creative_label: str = ""
     product_category: str = ""
     notes: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class EditorialTimelineAdjustment:
+    """Ajuste humano de timing (Fase 6.8); conserva detección automática original."""
+
+    session_id: str
+    scene_index: int
+    auto_detected_start_time: float
+    auto_detected_end_time: float
+    human_adjusted_start_time: float
+    human_adjusted_end_time: float
+    timing_adjustment_delta: float
+    adjustment_reason: str
+    creative_id: str = ""
+    clip_id: str = ""

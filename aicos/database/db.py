@@ -637,6 +637,85 @@ class EditorialHumanFeedbackEventRow(Base):
     payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+class TimelineClipPreviewRow(Base):
+    """Fase 6.8: previews visuales por escena de timeline creativo."""
+
+    __tablename__ = "timeline_clip_previews"
+    __table_args__ = (UniqueConstraint("creative_id", "scene_index", name="uq_timeline_clip_preview_scene"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    creative_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    clip_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    thumbnail_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    preview_video_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    start_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    end_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    duration: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    motion_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    narrative_role: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    visual_cluster_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    timeline_position: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+class EditorialSceneReviewRow(Base):
+    """Fase 6.7.1: estado de revisión humana por escena de sesión."""
+
+    __tablename__ = "editorial_scene_reviews"
+    __table_args__ = (UniqueConstraint("session_id", "scene_id", name="uq_editorial_scene_review"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scene_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    reviewer: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    correction_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    merged_into_scene_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    confidence_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
+class EditorialSceneMergeRow(Base):
+    """Fase 6.7.1: auditoría de fusiones de escenas."""
+
+    __tablename__ = "editorial_scene_merges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    source_scene_a: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_scene_b: Mapped[str] = mapped_column(String(64), nullable=False)
+    resulting_scene_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+class EditorialTimelineAdjustmentRow(Base):
+    """Fase 6.8: ajustes humanos de IN/OUT (no destructivos respecto a auto)."""
+
+    __tablename__ = "editorial_timeline_adjustments"
+    __table_args__ = (UniqueConstraint("session_id", "scene_index", name="uq_timeline_adjustment_scene"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    creative_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    clip_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    auto_detected_start_time: Mapped[float] = mapped_column(Float, nullable=False)
+    auto_detected_end_time: Mapped[float] = mapped_column(Float, nullable=False)
+    human_adjusted_start_time: Mapped[float] = mapped_column(Float, nullable=False)
+    human_adjusted_end_time: Mapped[float] = mapped_column(Float, nullable=False)
+    timing_adjustment_delta: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    adjustment_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
 class EditorialTrainingSessionRow(Base):
     """Fase 6.7: sesión de entrenamiento editorial humano-en-el-bucle."""
 

@@ -6,14 +6,12 @@ import { commitTrainingSession } from "../api/editorialTrainingApi";
 import { CommitTrainingPanel } from "../components/CommitTrainingPanel";
 import { CreativeAnalysisLoader } from "../components/CreativeAnalysisLoader";
 import { CreativeUploadZone } from "../components/CreativeUploadZone";
-import { HumanCorrectionPanel } from "../components/HumanCorrectionPanel";
+import { ReviewSummaryPanel } from "../components/ReviewSummaryPanel";
 import { StyleSummaryPanel } from "../components/StyleSummaryPanel";
-import { TimelineWorkspace } from "../components/TimelineWorkspace";
+import { VisualTimelineEditor } from "../components/VisualTimelineEditor";
 import { TrainingSessionForm } from "../components/TrainingSessionForm";
 import { UploadProgressCard } from "../components/UploadProgressCard";
 import { useCreativeUpload } from "../hooks/useCreativeUpload";
-import { useHumanCorrections } from "../hooks/useHumanCorrections";
-import { usePersistEditedTimeline } from "../hooks/usePersistEditedTimeline";
 import { useTimelineAnalysis } from "../hooks/useTimelineAnalysis";
 import { useTrainingSession } from "../hooks/useTrainingSession";
 import { useTrainingWorkspaceStore } from "../state/trainingWorkspaceStore";
@@ -24,7 +22,7 @@ const STEPS: { id: TrainingStepId; label: string }[] = [
   { id: 2, label: "Activos" },
   { id: 3, label: "Análisis IA" },
   { id: 4, label: "Timeline" },
-  { id: 5, label: "Correcciones" },
+  { id: 5, label: "Review Summary" },
   { id: 6, label: "Resumen" },
   { id: 7, label: "Commit" },
 ];
@@ -44,9 +42,6 @@ export function EditorialTrainingWorkspacePage() {
   const { createTraining, refresh } = useTrainingSession();
   const { uploadVideo, uploadAudio, videoProgress, audioProgress } = useCreativeUpload();
   const { runAnalysis } = useTimelineAnalysis();
-  const { sendCorrections } = useHumanCorrections();
-  const { persistScenes } = usePersistEditedTimeline();
-
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -55,7 +50,6 @@ export function EditorialTrainingWorkspacePage() {
   const hasSession = Boolean(sessionId);
   const hasMedia =
     Boolean(workspace?.session.final_video_path) && Boolean(workspace?.session.audio_path);
-  const hasScenes = (workspace?.scene_cards.length ?? 0) > 0;
   const canCommit = workspace?.session.status === "awaiting_human";
 
   return (
@@ -170,34 +164,16 @@ export function EditorialTrainingWorkspacePage() {
         {step === 4 ? (
           <>
             <section className="et-card">
-              <div className="et-inline" style={{ justifyContent: "space-between" }}>
-                <h2 style={{ margin: 0 }}>Guardar ediciones del timeline</h2>
-                <button
-                  type="button"
-                  className="et-btn et-btn--ghost"
-                  disabled={loading || !sessionId || !hasScenes}
-                  onClick={() => sessionId && void persistScenes(sessionId, reload)}
-                >
-                  Persistir escenas editadas
-                </button>
-              </div>
-              <p className="et-muted" style={{ marginTop: 8 }}>
-                Estado de sesión: <strong>{workspace?.session.status ?? "—"}</strong>
+              <p className="et-muted" style={{ margin: 0 }}>
+                Estado de sesión: <strong>{workspace?.session.status ?? "—"}</strong> · Recorta IN/OUT y guarda con «Guardar ajustes del timeline».
               </p>
             </section>
-            <TimelineWorkspace />
+            <VisualTimelineEditor creativeId={workspace?.session.creative_id ?? null} onReloadSession={reload} />
           </>
         ) : null}
 
         {step === 5 && hasSession ? (
-          <HumanCorrectionPanel
-            disabled={loading}
-            onSend={async (items) => {
-              if (!sessionId) return;
-              setSuccess(null);
-              await sendCorrections(sessionId, items, reload);
-            }}
-          />
+          <ReviewSummaryPanel disabled={loading} onRefreshWorkspace={() => (sessionId ? reload(sessionId) : Promise.resolve())} />
         ) : null}
 
         {step === 6 ? <StyleSummaryPanel /> : null}

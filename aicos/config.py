@@ -35,6 +35,7 @@ class PathsConfig(BaseModel):
     logs: str = "~/.aicos/logs"
     exports: str = "~/.aicos/exports"
     editorial_training_uploads: str = "~/.aicos/editorial_training/uploads"
+    timeline_visualization_cache: str = "~/.aicos/timeline_visualization"
 
 
 class TranscriptionConfig(BaseModel):
@@ -336,6 +337,20 @@ class HumanFeedbackReinforcementConfig(BaseModel):
     min_boost_per_clip: float = -0.075
 
 
+class TimelineVisualizationConfig(BaseModel):
+    """Fase 6.8: timeline visual cinematográfico (thumbnails, previews, pacing)."""
+
+    enabled: bool = True
+    thumbnail_size: tuple[int, int] = (320, 180)
+    preview_width: int = 480
+    preview_height: int = 270
+    preview_min_seconds: float = 2.0
+    preview_max_seconds: float = 4.0
+    preview_crf: int = 28
+    regenerate_on_request: bool = False
+    auto_generate_after_analyze: bool = True
+
+
 class EditorialTrainingWorkspaceConfig(BaseModel):
     """Fase 6.7: workspace de entrenamiento editorial (sesiones, timeline, correcciones, commit)."""
 
@@ -383,6 +398,7 @@ class AppConfig(BaseModel):
     editorial_training_workspace: EditorialTrainingWorkspaceConfig = Field(
         default_factory=EditorialTrainingWorkspaceConfig
     )
+    timeline_visualization: TimelineVisualizationConfig = Field(default_factory=TimelineVisualizationConfig)
 
     def resolved_paths(self) -> dict[str, Path]:
         return {
@@ -394,6 +410,7 @@ class AppConfig(BaseModel):
             "logs": _expand(self.paths.logs),
             "exports": _expand(self.paths.exports),
             "editorial_training_uploads": _expand(self.paths.editorial_training_uploads),
+            "timeline_visualization_cache": _expand(self.paths.timeline_visualization_cache),
         }
 
 
@@ -419,6 +436,10 @@ def load_yaml_config(path: Path | None = None) -> AppConfig:
     if "thumbnail_size" in ui and isinstance(ui["thumbnail_size"], list):
         ui["thumbnail_size"] = tuple(ui["thumbnail_size"])
     data["ui"] = ui
+    tv = data.get("timeline_visualization") or {}
+    if "thumbnail_size" in tv and isinstance(tv["thumbnail_size"], list):
+        tv["thumbnail_size"] = tuple(tv["thumbnail_size"])
+    data["timeline_visualization"] = tv
     return AppConfig.model_validate(data)
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from aicos.domain.editorial_dataset.entities import CreativeTimeline
-from aicos.domain.editorial_training.entities import EditorialTrainingSession
+from aicos.domain.editorial_training.entities import EditorialTimelineAdjustment, EditorialTrainingSession
 
 
 class EditorialStyleEmbeddingAttachPort(Protocol):
@@ -20,4 +20,12 @@ class EditorialTrainingSessionPersistencePort(Protocol):
         ...
 
     def save(self, session: Any, training: EditorialTrainingSession) -> None:
+        ...
+
+
+class EditorialTimelineAdjustmentPersistencePort(Protocol):
+    def list_by_session(self, session: Any, session_id: str) -> tuple[EditorialTimelineAdjustment, ...]:
+        ...
+
+    def upsert(self, session: Any, adjustment: EditorialTimelineAdjustment) -> None:
         ...

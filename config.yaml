@@ -15,6 +15,7 @@ paths:
   logs: "~/.aicos/logs"
   exports: "~/.aicos/exports"
   editorial_training_uploads: "~/.aicos/editorial_training/uploads"
+  timeline_visualization_cache: "~/.aicos/timeline_visualization"
 
 transcription:
   engine: "faster_whisper"
@@ -273,3 +274,15 @@ editorial_training_workspace:
   allowed_audio_extensions: [".wav", ".mp3", ".m4a", ".flac"]
   analyze_include_clip_search: false
   analyze_enable_intelligence: false
+
+# Fase 6.8: timeline visual cinematográfico (thumbnails, previews, heatmap).
+timeline_visualization:
+  enabled: true
+  thumbnail_size: [320, 180]
+  preview_width: 480
+  preview_height: 270
+  preview_min_seconds: 2.0
+  preview_max_seconds: 4.0
+  preview_crf: 28
+  regenerate_on_request: false
+  auto_generate_after_analyze: true

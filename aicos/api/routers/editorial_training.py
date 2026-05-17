@@ -70,11 +70,40 @@ def _session_out(s: EditorialTrainingSession) -> EditorialTrainingSessionOut:
     )
 
 
+def _scene_cards_for_session(session: Any, timeline: Any, session_id: str):
+    previews = None
+    reviews = None
+    cfg = get_config()
+    if cfg.timeline_visualization.enabled:
+        try:
+            from aicos.services.timeline_visualization_factory import build_timeline_visualization_service
+
+            viz = build_timeline_visualization_service(cfg)
+            track = viz.build_visual_track(session, timeline.creative_id)
+            previews = track.clip_previews
+        except Exception:
+            previews = None
+    try:
+        from aicos.infrastructure.editorial_review.sql_editorial_scene_review_repository import (
+            SqlEditorialSceneReviewRepository,
+        )
+
+        reviews = SqlEditorialSceneReviewRepository().list_by_session(session, session_id)
+    except Exception:
+        reviews = None
+    return build_timeline_scene_cards(
+        timeline,
+        visual_previews=previews,
+        creative_id=timeline.creative_id,
+        review_states=reviews,
+    )
+
+
 def _analyze_response_payload(
-    s: EditorialTrainingSession, timeline: Any, analysis_warning: str | None
+    s: EditorialTrainingSession, timeline: Any, analysis_warning: str | None, session: Any
 ) -> EditorialTrainingAnalyzeResponse:
     rec = timeline_to_dataset_record(timeline)
-    cards = build_timeline_scene_cards(timeline)
+    cards = _scene_cards_for_session(session, timeline, s.session_id)
     summary = build_training_summary(s, timeline)
     return EditorialTrainingAnalyzeResponse(
         session=_session_out(s),
@@ -116,14 +145,34 @@ def get_training_session(session_id: str) -> EditorialTrainingWorkspaceGetRespon
         if s is None:
             raise HTTPException(status_code=404, detail="editorial_training_session_not_found")
         tl = svc.load_timeline(session, s.creative_id)
-    timeline_dict = timeline_to_dataset_record(tl) if tl is not None else None
-    cards = build_timeline_scene_cards(tl) if tl is not None else []
-    summary = build_training_summary(s, tl) if tl is not None else None
+        timeline_dict = timeline_to_dataset_record(tl) if tl is not None else None
+        cards = _scene_cards_for_session(session, tl, session_id) if tl is not None else []
+        summary = build_training_summary(s, tl) if tl is not None else None
+        review_summary = None
+        if tl is not None:
+            try:
+                from aicos.application.editorial_review.workspace_integration import load_review_summary_for_session
+                from aicos.infrastructure.editorial_review.sql_editorial_scene_review_repository import (
+                    SqlEditorialSceneReviewRepository,
+                )
+                from aicos.services.editorial_review_factory import build_timeline_review_service
+
+                review_summary = load_review_summary_for_session(
+                    session,
+                    session_id,
+                    s.creative_id,
+                    timeline_read=SqlCreativeTimelineRepository(),
+                    review_svc=build_timeline_review_service(),
+                    review_repo=SqlEditorialSceneReviewRepository(),
+                )
+            except Exception:
+                review_summary = None
     return EditorialTrainingWorkspaceGetResponse(
         session=_session_out(s),
         timeline=timeline_dict,
         scene_cards=cards,
         summary=summary,
+        review_summary=review_summary,
     )
 
 
@@ -193,7 +242,7 @@ async def analyze_training_session(body: EditorialTrainingAnalyzeRequest) -> Edi
             s = workspace.get_session(session, body.session_id)
             if s is None:
                 raise HTTPException(status_code=404, detail="editorial_training_session_not_found")
-            return _analyze_response_payload(s, timeline, resp.warning)
+            return _analyze_response_payload(s, timeline, resp.warning, session)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

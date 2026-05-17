@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from aicos.application.editorial_review.presentation import apply_review_to_scene_card, build_review_lookup
+from aicos.application.timeline_visualization.presentation import media_url
 from aicos.domain.editorial_dataset.entities import CreativeTimeline, TimelineScene
 from aicos.domain.editorial_training.entities import EditorialTrainingSession
+from aicos.domain.editorial_review.entities import EditorialSceneReviewState
+from aicos.domain.editorial_review.scene_merge import scene_id_from_index
+from aicos.domain.timeline_visualization.entities import TimelineClipPreview
+from aicos.domain.timeline_visualization.pacing import hook_probability_for_scene
 from aicos.models.schemas import EditorialTrainingSummaryViewModel, TimelineSceneViewModel
 
 
@@ -26,17 +32,43 @@ def _scene_type_label(narrative_role: str) -> str:
     return "Scene"
 
 
-def build_timeline_scene_cards(timeline: CreativeTimeline) -> list[TimelineSceneViewModel]:
+def build_timeline_scene_cards(
+    timeline: CreativeTimeline,
+    *,
+    visual_previews: tuple[TimelineClipPreview, ...] | None = None,
+    creative_id: str | None = None,
+    review_states: tuple[EditorialSceneReviewState, ...] | None = None,
+) -> list[TimelineSceneViewModel]:
+    cid = creative_id or timeline.creative_id
+    by_idx = {p.scene_index: p for p in visual_previews} if visual_previews else {}
+    reviews = build_review_lookup(review_states) if review_states else {}
     out: list[TimelineSceneViewModel] = []
     for s in timeline.timeline_scenes:
-        out.append(_scene_to_card(s))
+        card = _scene_to_card(s, cid, by_idx.get(s.scene_index))
+        rev = reviews.get(scene_id_from_index(s.scene_index))
+        out.append(apply_review_to_scene_card(card, s, rev))
     return out
 
 
-def _scene_to_card(s: TimelineScene) -> TimelineSceneViewModel:
+def _scene_to_card(
+    s: TimelineScene,
+    creative_id: str,
+    preview: TimelineClipPreview | None,
+) -> TimelineSceneViewModel:
+    thumb = ""
+    prev = ""
+    if preview is not None:
+        if preview.thumbnail_path:
+            thumb = media_url(creative_id, s.scene_index, "thumbnail")
+        if preview.preview_video_path:
+            prev = media_url(creative_id, s.scene_index, "preview")
     return TimelineSceneViewModel(
         scene_index=s.scene_index,
-        thumbnail_url="",
+        thumbnail_url=thumb,
+        preview_video_url=prev,
+        hook_score=hook_probability_for_scene(s),
+        review_status="pending",
+        confidence_score=hook_probability_for_scene(s),
         scene_type_label=_scene_type_label(s.narrative_role),
         narrative_role=s.narrative_role,
         time_start=s.start_time,

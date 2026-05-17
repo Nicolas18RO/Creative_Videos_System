@@ -1059,6 +1059,8 @@ class TimelineSceneViewModel(BaseModel):
 
     scene_index: int
     thumbnail_url: str = ""
+    preview_video_url: str = ""
+    hook_score: float = 0.0
     scene_type_label: str = ""
     narrative_role: str = ""
     time_start: float = 0.0
@@ -1071,6 +1073,9 @@ class TimelineSceneViewModel(BaseModel):
     semantic_tags: list[str] = Field(default_factory=list)
     emotion_tags: list[str] = Field(default_factory=list)
     clip_id: str = ""
+    review_status: str = "pending"
+    confidence_score: float = 0.0
+    merged_into_scene_id: str | None = None
 
 
 class EditorialTrainingSummaryViewModel(BaseModel):
@@ -1103,11 +1108,77 @@ class EditorialTrainingSessionOut(BaseModel):
     notes: str = ""
 
 
+# --- Fase 6.7.1: Editorial human review ---
+
+
+class EditorialSceneReviewStatusIn(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    status: str = Field(..., max_length=32)
+    reviewer: str = Field(default="human", max_length=128)
+    correction_reason: str = Field(default="", max_length=512)
+    notes: str = Field(default="", max_length=4000)
+    confidence_override: float | None = None
+    narrative_function: str | None = Field(default=None, max_length=32)
+    clip_id: str | None = Field(default=None, max_length=64)
+    transition_type: str | None = Field(default=None, max_length=48)
+    ingest_feedback: bool = True
+
+
+class EditorialSceneBulkStatusIn(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    scene_ids: list[str] = Field(default_factory=list, max_length=500)
+    status: str = Field(..., max_length=32)
+    reviewer: str = Field(default="human", max_length=128)
+    correction_reason: str = Field(default="", max_length=512)
+    ingest_feedback: bool = True
+
+
+class EditorialSceneMergeIn(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    creative_id: str = Field(..., max_length=128)
+    scene_index_a: int
+    scene_index_b: int
+    reviewer: str = Field(default="human", max_length=128)
+
+
+class EditorialSceneReviewStateOut(BaseModel):
+    scene_id: str
+    status: str
+    reviewed_at: str | None = None
+    reviewer: str = ""
+    correction_reason: str = ""
+    merged_into_scene_id: str | None = None
+    confidence_override: float | None = None
+    notes: str = ""
+
+
+class EditorialReviewSummaryOut(BaseModel):
+    session_id: str
+    total_scenes: int = 0
+    pending: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    merged: int = 0
+    edited: int = 0
+    scene_states: list[EditorialSceneReviewStateOut] = Field(default_factory=list)
+    pending_scene_ids: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class EditorialBulkActionIn(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    creative_id: str = Field(..., max_length=128)
+    action: str = Field(..., max_length=48)
+    confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    ingest_feedback: bool = True
+
+
 class EditorialTrainingWorkspaceGetResponse(BaseModel):
     session: EditorialTrainingSessionOut
     timeline: dict | None = None
     scene_cards: list[TimelineSceneViewModel] = Field(default_factory=list)
     summary: EditorialTrainingSummaryViewModel | None = None
+    review_summary: EditorialReviewSummaryOut | None = None
 
 
 class EditorialTrainingAnalyzeRequest(BaseModel):
@@ -1128,6 +1199,133 @@ class EditorialTrainingAnalyzeResponse(BaseModel):
     scene_cards: list[TimelineSceneViewModel] = Field(default_factory=list)
     summary: EditorialTrainingSummaryViewModel | None = None
     analysis_warning: str | None = None
+
+
+# --- Fase 6.8: Timeline visual cinematográfico ---
+
+
+class TimelineClipPreviewOut(BaseModel):
+    clip_id: str
+    scene_index: int
+    thumbnail_url: str = ""
+    preview_video_url: str = ""
+    start_time: float = 0.0
+    end_time: float = 0.0
+    duration: float = 0.0
+    motion_score: float = 0.0
+    narrative_role: str = ""
+    visual_cluster_id: str = ""
+    timeline_position: float = 0.0
+
+
+class TimelineVisualTrackOut(BaseModel):
+    creative_id: str
+    timeline_duration: float = 0.0
+    clip_previews: list[TimelineClipPreviewOut] = Field(default_factory=list)
+    pacing_density: list[float] = Field(default_factory=list)
+    transition_density: list[float] = Field(default_factory=list)
+    motion_curve: list[float] = Field(default_factory=list)
+
+
+class ClipVisualInspectionOut(BaseModel):
+    clip_id: str
+    scene_index: int
+    motion_intensity: float = 0.0
+    visual_similarity: float = 0.0
+    cut_speed: float = 0.0
+    transition_type: str = ""
+    frame_density: float = 0.0
+    hook_probability: float = 0.0
+
+
+class TimelineVisualizationResponse(BaseModel):
+    track: TimelineVisualTrackOut
+    scene_count: int = 0
+
+
+class TimelineVisualizationGenerateRequest(BaseModel):
+    creative_id: str = Field(..., max_length=128)
+    force: bool = False
+
+
+class TimelineVisualizationRebuildRequest(BaseModel):
+    creative_id: str = Field(..., max_length=128)
+
+
+# --- Fase 6.8: Precision timeline editing ---
+
+
+class TimelineBoundaryIn(BaseModel):
+    scene_index: int
+    start_time: float
+    end_time: float
+
+
+class TimelineValidateRequest(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    scenes: list[TimelineBoundaryIn] = Field(default_factory=list)
+    timeline_duration: float | None = None
+
+
+class TimelineValidationIssueOut(BaseModel):
+    code: str
+    message: str
+    scene_index: int | None = None
+    related_scene_index: int | None = None
+
+
+class TimelineValidationResultOut(BaseModel):
+    valid: bool
+    issues: list[TimelineValidationIssueOut] = Field(default_factory=list)
+    normalized: list[dict] = Field(default_factory=list)
+
+
+class MergePreviewSceneSliceOut(BaseModel):
+    scene_index: int
+    start_time: float
+    end_time: float
+    duration: float
+    clip_id: str = ""
+    narrative_role: str = ""
+
+
+class MergePreviewRequest(BaseModel):
+    creative_id: str = Field(..., max_length=128)
+    scene_index_a: int
+    scene_index_b: int
+
+
+class MergePreviewResultOut(BaseModel):
+    scene_a: MergePreviewSceneSliceOut
+    scene_b: MergePreviewSceneSliceOut
+    merged: MergePreviewSceneSliceOut
+    removed_boundary_time: float
+    total_duration: float
+
+
+class TimelineSaveAdjustmentsRequest(BaseModel):
+    session_id: str = Field(..., max_length=36)
+    scenes: list[EditorialDatasetSceneIn] = Field(default_factory=list)
+    adjustment_reason: str = Field(default="human_trim", max_length=512)
+    timeline_duration: float | None = None
+
+
+class EditorialTimelineAdjustmentOut(BaseModel):
+    session_id: str
+    scene_index: int
+    clip_id: str = ""
+    auto_detected_start_time: float
+    auto_detected_end_time: float
+    human_adjusted_start_time: float
+    human_adjusted_end_time: float
+    timing_adjustment_delta: float
+    adjustment_reason: str = ""
+
+
+class TimelineSaveAdjustmentsResponse(BaseModel):
+    validation: TimelineValidationResultOut
+    adjustments_saved: list[EditorialTimelineAdjustmentOut] = Field(default_factory=list)
+    timeline: dict | None = None
 
 
 # --- Fase 6.4: Style retrieval (presentación API) ---
