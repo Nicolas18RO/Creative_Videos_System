@@ -351,6 +351,12 @@ class TimelineVisualizationConfig(BaseModel):
     auto_generate_after_analyze: bool = True
 
 
+class EditorialRegistryConfig(BaseModel):
+    """Fase 6.7.1: registry de sesiones comprometidas al dataset editorial."""
+
+    enabled: bool = True
+
+
 class EditorialTrainingWorkspaceConfig(BaseModel):
     """Fase 6.7: workspace de entrenamiento editorial (sesiones, timeline, correcciones, commit)."""
 
@@ -398,6 +404,7 @@ class AppConfig(BaseModel):
     editorial_training_workspace: EditorialTrainingWorkspaceConfig = Field(
         default_factory=EditorialTrainingWorkspaceConfig
     )
+    editorial_registry: EditorialRegistryConfig = Field(default_factory=EditorialRegistryConfig)
     timeline_visualization: TimelineVisualizationConfig = Field(default_factory=TimelineVisualizationConfig)
 
     def resolved_paths(self) -> dict[str, Path]:

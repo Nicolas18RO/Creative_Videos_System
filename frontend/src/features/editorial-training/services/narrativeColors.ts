@@ -5,6 +5,7 @@ const MAP: Record<string, string> = {
   RESULT: "#14b8a6",
   AUTHORITY: "#6366f1",
   SOCIAL_PROOF: "#a855f7",
+  PRODUCT: "#0ea5e9",
   NATURAL: "#64748b",
   CTA: "#eab308",
 };

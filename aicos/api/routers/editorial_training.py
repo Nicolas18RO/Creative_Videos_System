@@ -73,6 +73,7 @@ def _session_out(s: EditorialTrainingSession) -> EditorialTrainingSessionOut:
 def _scene_cards_for_session(session: Any, timeline: Any, session_id: str):
     previews = None
     reviews = None
+    semantic_intents = None
     cfg = get_config()
     if cfg.timeline_visualization.enabled:
         try:
@@ -91,11 +92,18 @@ def _scene_cards_for_session(session: Any, timeline: Any, session_id: str):
         reviews = SqlEditorialSceneReviewRepository().list_by_session(session, session_id)
     except Exception:
         reviews = None
+    try:
+        from aicos.services.editorial_semantic_intent_factory import build_editorial_semantic_intent_service
+
+        semantic_intents = build_editorial_semantic_intent_service().list_by_session(session, session_id)
+    except Exception:
+        semantic_intents = None
     return build_timeline_scene_cards(
         timeline,
         visual_previews=previews,
         creative_id=timeline.creative_id,
         review_states=reviews,
+        semantic_intents=semantic_intents,
     )
 
 

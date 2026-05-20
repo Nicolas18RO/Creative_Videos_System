@@ -2,7 +2,9 @@ import "../components/editorial-training-workspace.css";
 
 import { useCallback, useState } from "react";
 
+import { checkRegistryDuplicates } from "../api/editorialRegistryApi";
 import { commitTrainingSession } from "../api/editorialTrainingApi";
+import { DatasetSessionsRegistry } from "../components/registry/DatasetSessionsRegistry";
 import { CommitTrainingPanel } from "../components/CommitTrainingPanel";
 import { CreativeAnalysisLoader } from "../components/CreativeAnalysisLoader";
 import { CreativeUploadZone } from "../components/CreativeUploadZone";
@@ -42,8 +44,10 @@ export function EditorialTrainingWorkspacePage() {
   const { createTraining, refresh } = useTrainingSession();
   const { uploadVideo, uploadAudio, videoProgress, audioProgress } = useCreativeUpload();
   const { runAnalysis } = useTimelineAnalysis();
+  const [view, setView] = useState<"workspace" | "registry">("registry");
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const setSessionId = useTrainingWorkspaceStore((s) => s.setSessionId);
 
   const reload = useCallback(async (id: string) => refresh(id), [refresh]);
 
@@ -61,8 +65,37 @@ export function EditorialTrainingWorkspacePage() {
             Flujo guiado para subir creativos, analizar audio con AICOS, revisar el timeline visual y enviar refuerzo humano sin pegar
             JSON manualmente.
           </p>
+          <div className="et-inline" style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              className={`et-step-pill ${view === "registry" ? "et-step-pill--active" : ""}`}
+              onClick={() => setView("registry")}
+            >
+              Registro dataset
+            </button>
+            <button
+              type="button"
+              className={`et-step-pill ${view === "workspace" ? "et-step-pill--active" : ""}`}
+              onClick={() => setView("workspace")}
+            >
+              Nueva sesión
+            </button>
+          </div>
         </header>
 
+        {view === "registry" ? (
+          <DatasetSessionsRegistry
+            onOpenSession={(id) => {
+              setSessionId(id);
+              setView("workspace");
+              void reload(id);
+              setStep(2);
+            }}
+          />
+        ) : null}
+
+        {view === "workspace" ? (
+        <>
         <nav className="et-steps" aria-label="Pasos del flujo">
           {STEPS.map((s) => (
             <button
@@ -85,6 +118,9 @@ export function EditorialTrainingWorkspacePage() {
         {step === 1 ? (
           <TrainingSessionForm
             disabled={loading}
+            onCheckDuplicates={(creativeId, creativeLabel) =>
+              checkRegistryDuplicates(creativeId, creativeLabel)
+            }
             onCreate={async (body) => {
               setSuccess(null);
               const s = await createTraining(body);
@@ -199,6 +235,8 @@ export function EditorialTrainingWorkspacePage() {
           <section className="et-card">
             <p className="et-muted">Crea primero una sesión en el paso 1.</p>
           </section>
+        ) : null}
+        </>
         ) : null}
       </div>
     </div>

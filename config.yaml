@@ -266,6 +266,10 @@ human_feedback_reinforcement:
   max_boost_per_clip: 0.09
   min_boost_per_clip: -0.075
 
+# Fase 6.7.1: registry de sesiones en dataset (historial / anti-duplicados).
+editorial_registry:
+  enabled: true
+
 # Fase 6.7: workspace de entrenamiento editorial (sesiones + timeline + aprendizaje).
 editorial_training_workspace:
   enabled: true

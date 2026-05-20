@@ -1,6 +1,8 @@
 import { mediaSrc } from "../api/timelineVisualizationApi";
 import type { EditableScene, ReviewStatus } from "../types/trainingWorkspace";
-import { narrativeRoles, visualEnergyToLabel } from "../services/sceneDraftMapper";
+import { visualEnergyToLabel } from "../services/sceneDraftMapper";
+import { SceneAudioContextBanner } from "./timeline/SceneAudioContextBanner";
+import { SemanticIntentPanel } from "./timeline/SemanticIntentPanel";
 import { narrativeColor } from "../services/narrativeColors";
 import { ReviewStatusBadge } from "./ReviewStatusBadge";
 import { TimelineBoundaryEditor } from "./timeline/TimelineBoundaryEditor";
@@ -17,7 +19,7 @@ type Props = {
   onResetScene: () => void;
   onAccept: () => void;
   onReject: () => void;
-  onMergeNext?: () => void;
+  onMergeNext?: (anchor: HTMLElement) => void;
   onRestore?: () => void;
 };
 
@@ -36,12 +38,11 @@ export function TimelineSceneCard({
   onMergeNext,
   onRestore,
 }: Props) {
-  const baseRoles = narrativeRoles();
-  const roles = baseRoles.includes(scene.narrative_role) ? [...baseRoles] : [scene.narrative_role, ...baseRoles];
   const transitions = ["cut", "dissolve", "whip_pan", "motion_blur", "match_cut"];
   const thumb = mediaSrc(scene.thumbnail_url);
   const preview = mediaSrc(scene.preview_video_url);
-  const border = narrativeColor(scene.narrative_role);
+  const displayIntent = scene.narrative_intent || scene.narrative_role;
+  const border = narrativeColor(displayIntent);
   const status = (scene.review_status || "pending") as ReviewStatus;
   const isMerged = status === "merged";
 
@@ -60,6 +61,9 @@ export function TimelineSceneCard({
         <div className="et-scene-head">
           <div>
             <strong style={{ color: "#f8fafc" }}>{scene.scene_type_label}</strong>
+            <div className="et-muted" style={{ marginTop: 4, fontSize: 12 }}>
+              Clip: {scene.clip_source_taxonomy || scene.auto_clip_source_taxonomy || "—"} · Narrativa: {displayIntent}
+            </div>
             <div className="et-muted" style={{ marginTop: 4 }}>
               {scene.time_start.toFixed(2)}s → {scene.time_end.toFixed(2)}s · {scene.duration_seconds.toFixed(2)}s
             </div>
@@ -71,6 +75,7 @@ export function TimelineSceneCard({
         ) : null}
         {!isMerged ? (
           <>
+            <SceneAudioContextBanner scene={scene} />
             <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
               <TimelineBoundaryEditor
                 scene={scene}
@@ -81,15 +86,8 @@ export function TimelineSceneCard({
                 onResetScene={onResetScene}
               />
             </div>
+            <SemanticIntentPanel scene={scene} disabled={disabled} onPatch={onPatch} />
             <div className="et-row">
-              <div className="et-stack">
-                <label className="et-label">Rol narrativo</label>
-                <select className="et-select" disabled={disabled} value={scene.narrative_role} onChange={(e) => onPatch({ narrative_role: e.target.value })} onClick={(e) => e.stopPropagation()}>
-                  {roles.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
               <div className="et-stack">
                 <label className="et-label">Energía visual</label>
                 <input type="range" min={0} max={1} step={0.01} disabled={disabled} className="et-slider" value={scene.visual_energy} onClick={(e) => e.stopPropagation()} onChange={(e) => { const v = Number(e.target.value); onPatch({ visual_energy: v, energy_label: visualEnergyToLabel(v) }); }} />
@@ -110,7 +108,19 @@ export function TimelineSceneCard({
             <div className="et-inline" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
               <button type="button" className="et-btn et-btn--ok" disabled={disabled} onClick={onAccept}>Aceptar</button>
               <button type="button" className="et-btn et-btn--danger" disabled={disabled} onClick={onReject}>Rechazar</button>
-              {onMergeNext ? <button type="button" className="et-btn et-btn--ghost" disabled={disabled} onClick={onMergeNext}>Fusionar con siguiente</button> : null}
+              {onMergeNext ? (
+                <button
+                  type="button"
+                  className="et-btn et-btn--ghost"
+                  disabled={disabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMergeNext(e.currentTarget);
+                  }}
+                >
+                  Fusionar con siguiente
+                </button>
+              ) : null}
               {onRestore && status !== "pending" ? <button type="button" className="et-btn et-btn--ghost" disabled={disabled} onClick={onRestore}>Restaurar</button> : null}
               <span className="et-badge">Clip: {scene.clip_id || "—"}</span>
             </div>

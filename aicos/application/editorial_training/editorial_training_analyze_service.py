@@ -72,7 +72,15 @@ class EditorialTrainingAnalyzeService:
             raw = map_analyzed_scenes_to_raw_inputs(resp.scenes)
             if not raw:
                 raise ValueError("editorial_training_analyze_empty_scenes")
-            timeline = self._workspace.submit_timeline(session, session_id, raw)
+            from aicos.services.editorial_semantic_intent_factory import build_editorial_semantic_intent_service
+
+            build_editorial_semantic_intent_service().seed_from_analysis(session, session_id, resp.scenes)
+            timeline = self._workspace.submit_timeline(
+                session,
+                session_id,
+                raw,
+                from_auto_detection=True,
+            )
             self._maybe_generate_visual_previews(session, timeline.creative_id)
             logger.info(
                 "[EditorialTraining] analyze_done session=%s scenes=%s warning=%s",

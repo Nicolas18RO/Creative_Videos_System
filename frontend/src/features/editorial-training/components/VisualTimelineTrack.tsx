@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { mediaSrc } from "../api/timelineVisualizationApi";
+import { sceneAudioContextText } from "../services/sceneAudioContext";
 import { narrativeColor } from "../services/narrativeColors";
 import type { EditableScene, TimelineVisualTrackDto } from "../types/trainingWorkspace";
 
@@ -34,7 +35,8 @@ export function VisualTimelineTrack({ track, scenes, selectedIndex, zoom, onSele
         <div className="vt-track__rail" style={{ width: `${Math.max(100, 100 * zoom)}%` }}>
           {segments.map(({ scene, widthPct }) => {
             const thumb = mediaSrc(scene.thumbnail_url);
-            const color = narrativeColor(scene.narrative_role);
+            const color = narrativeColor(scene.narrative_intent || scene.narrative_role);
+            const audioHint = sceneAudioContextText(scene);
             return (
               <button
                 key={scene.scene_index}
@@ -42,6 +44,8 @@ export function VisualTimelineTrack({ track, scenes, selectedIndex, zoom, onSele
                 draggable
                 className={`vt-seg ${selectedIndex === scene.scene_index ? "vt-seg--active" : ""} vt-seg--${scene.review_status || "pending"}`}
                 style={{ flex: `0 0 ${widthPct}%`, borderColor: color }}
+                title={audioHint ? `Audio: ${audioHint}` : `Escena ${scene.scene_index}`}
+                aria-label={audioHint ? `Escena ${scene.scene_index}: ${audioHint}` : `Escena ${scene.scene_index}`}
                 onClick={() => onSelect(scene.scene_index)}
                 onDragStart={() => setDragFrom(scene.scene_index)}
                 onDragOver={(e) => e.preventDefault()}

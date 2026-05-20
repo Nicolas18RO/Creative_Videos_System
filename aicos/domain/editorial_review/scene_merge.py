@@ -5,7 +5,17 @@ from __future__ import annotations
 from aicos.domain.editorial_dataset.entities import TimelineScene
 from aicos.domain.editorial_dataset.rules import normalize_tag_list
 
-_ROLE_PRIORITY = ("HOOK", "PROBLEM", "BENEFIT", "RESULT", "AUTHORITY", "SOCIAL_PROOF", "CTA", "NATURAL")
+_ROLE_PRIORITY = (
+    "HOOK",
+    "PROBLEM",
+    "BENEFIT",
+    "RESULT",
+    "AUTHORITY",
+    "SOCIAL_PROOF",
+    "PRODUCT",
+    "CTA",
+    "NATURAL",
+)
 
 
 def _pick_narrative_role(a: str, b: str) -> str:

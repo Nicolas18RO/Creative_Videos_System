@@ -15,6 +15,9 @@ from aicos.api.routers import (
     editorial_dataset,
     editorial_metadata,
     editorial_training,
+    editorial_registry,
+    editorial_category,
+    editorial_semantic_intent,
     editorial_review,
     editorial_timeline_precision,
     timeline_visualization,
@@ -79,6 +82,13 @@ app.include_router(human_feedback.router, prefix="/human-feedback", tags=["human
 app.include_router(editorial_metadata.router, prefix="/editorial", tags=["editorial"])
 app.include_router(editorial_dataset.router, prefix="/editorial-dataset", tags=["editorial_dataset"])
 app.include_router(editorial_training.router, prefix="/editorial-training", tags=["editorial_training"])
+app.include_router(editorial_registry.router, prefix="/editorial-registry", tags=["editorial_registry"])
+app.include_router(editorial_category.router, prefix="/editorial-category", tags=["editorial_category"])
+app.include_router(
+    editorial_semantic_intent.router,
+    prefix="/editorial-semantic-intent",
+    tags=["editorial_semantic_intent"],
+)
 app.include_router(editorial_review.router, prefix="/editorial-review", tags=["editorial_review"])
 app.include_router(
     editorial_timeline_precision.router,

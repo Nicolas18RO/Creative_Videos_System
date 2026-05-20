@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { sceneTypeLabelFromRole } from "../services/sceneDraftMapper";
 import { scenesEqual, applyRedo, applyUndo, pushHistory } from "../services/timelineDraftHistory";
 import { roundSeconds } from "../services/timelineTimeFormat";
 import type { MergePreviewResultDto, TimelineValidationResultDto } from "../types/timelinePrecision";
@@ -13,6 +14,8 @@ type TimelineDraftState = {
   validation: TimelineValidationResultDto | null;
   mergePreview: MergePreviewResultDto | null;
   mergePair: { a: number; b: number } | null;
+  mergeAnchorRect: DOMRect | null;
+  mergeError: string | null;
   merging: boolean;
   saving: boolean;
   initFromScenes: (scenes: EditableScene[]) => void;
@@ -23,7 +26,12 @@ type TimelineDraftState = {
   resetScene: (sceneIndex: number) => void;
   resetTimeline: () => void;
   setValidation: (v: TimelineValidationResultDto | null) => void;
-  setMergePreview: (preview: MergePreviewResultDto | null, pair: { a: number; b: number } | null) => void;
+  setMergePreview: (
+    preview: MergePreviewResultDto | null,
+    pair: { a: number; b: number } | null,
+    anchorRect?: DOMRect | null,
+  ) => void;
+  setMergeError: (msg: string | null) => void;
   setMerging: (v: boolean) => void;
   setSaving: (v: boolean) => void;
   hasPendingChanges: () => boolean;
@@ -47,6 +55,8 @@ export const useTimelineDraftStore = create<TimelineDraftState>((set, get) => ({
   validation: null,
   mergePreview: null,
   mergePair: null,
+  mergeAnchorRect: null,
+  mergeError: null,
   merging: false,
   saving: false,
 
@@ -66,6 +76,10 @@ export const useTimelineDraftStore = create<TimelineDraftState>((set, get) => ({
       const draftScenes = state.draftScenes.map((s) => {
         if (s.scene_index !== sceneIndex) return s;
         const next = { ...s, ...patch };
+        const narrative = patch.narrative_intent ?? patch.narrative_role;
+        if (narrative !== undefined) {
+          next.scene_type_label = sceneTypeLabelFromRole(narrative);
+        }
         if (patch.time_start !== undefined || patch.time_end !== undefined) {
           next.duration_seconds = roundSeconds(next.time_end - next.time_start);
         }
@@ -114,7 +128,9 @@ export const useTimelineDraftStore = create<TimelineDraftState>((set, get) => ({
     })),
 
   setValidation: (validation) => set({ validation }),
-  setMergePreview: (mergePreview, mergePair) => set({ mergePreview, mergePair }),
+  setMergePreview: (mergePreview, mergePair, anchorRect = null) =>
+    set({ mergePreview, mergePair, mergeAnchorRect: anchorRect ?? null, mergeError: null }),
+  setMergeError: (mergeError) => set({ mergeError }),
   setMerging: (merging) => set({ merging }),
   setSaving: (saving) => set({ saving }),
 

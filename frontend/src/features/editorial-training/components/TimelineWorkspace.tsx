@@ -1,10 +1,13 @@
 import { useCallback } from "react";
 
+import { patchSceneSemanticIntent } from "../api/editorialSemanticIntentApi";
 import { fetchMergePreview } from "../api/timelinePrecisionApi";
+import { useCinematicMerge } from "../hooks/useCinematicMerge";
 import { useEditorialReview } from "../hooks/useEditorialReview";
+import { sceneTypeLabelFromRole } from "../services/sceneDraftMapper";
 import { useTrainingWorkspaceStore } from "../state/trainingWorkspaceStore";
 import { useTimelineDraftStore } from "../state/timelineDraftStore";
-import { MergePreviewCard } from "./timeline/MergePreviewCard";
+import { MergeFloatingDialog } from "./timeline/MergeFloatingDialog";
 import { TimelineReviewToolbar } from "./TimelineReviewToolbar";
 import { TimelineSceneCard } from "./TimelineSceneCard";
 
@@ -24,9 +27,10 @@ export function TimelineWorkspace() {
   const resetScene = useTimelineDraftStore((s) => s.resetScene);
   const mergePreview = useTimelineDraftStore((s) => s.mergePreview);
   const mergePair = useTimelineDraftStore((s) => s.mergePair);
+  const mergeAnchorRect = useTimelineDraftStore((s) => s.mergeAnchorRect);
+  const mergeError = useTimelineDraftStore((s) => s.mergeError);
   const merging = useTimelineDraftStore((s) => s.merging);
   const setMergePreview = useTimelineDraftStore((s) => s.setMergePreview);
-  const setMerging = useTimelineDraftStore((s) => s.setMerging);
   const validation = useTimelineDraftStore((s) => s.validation);
 
   const loading = useTrainingWorkspaceStore((s) => s.loading);
@@ -35,9 +39,9 @@ export function TimelineWorkspace() {
   const workspace = useTrainingWorkspaceStore((s) => s.workspace);
   const sessionId = useTrainingWorkspaceStore((s) => s.sessionId);
   const setError = useTrainingWorkspaceStore((s) => s.setError);
-  const initFromScenes = useTimelineDraftStore((s) => s.initFromScenes);
-
-  const { reviewScene, mergeWithNext } = useEditorialReview();
+  const patchScene = useTrainingWorkspaceStore((s) => s.patchScene);
+  const { reviewScene } = useEditorialReview();
+  const { executeMerge } = useCinematicMerge();
 
   const timelineDuration = Math.max(...draftScenes.map((s) => s.time_end), 1);
 
@@ -47,7 +51,7 @@ export function TimelineWorkspace() {
   );
 
   const openMergePreview = useCallback(
-    async (a: number, b: number) => {
+    async (a: number, b: number, anchor: HTMLElement) => {
       const creativeId = workspace?.session.creative_id;
       if (!creativeId) return;
       try {
@@ -56,7 +60,7 @@ export function TimelineWorkspace() {
           scene_index_a: a,
           scene_index_b: b,
         });
-        setMergePreview(preview, { a, b });
+        setMergePreview(preview, { a, b }, anchor.getBoundingClientRect());
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -94,40 +98,58 @@ export function TimelineWorkspace() {
               timelineDuration={timelineDuration}
               validationMessage={issueForScene(s.scene_index)}
               onSelect={(shift) => toggleSceneSelection(s.scene_index, shift)}
-              onPatch={(p) => patchDraft(s.scene_index, p)}
+              onPatch={(p) => {
+                let patch = { ...p };
+                const narrative = p.narrative_intent ?? p.narrative_role;
+                if (narrative) {
+                  patch = {
+                    ...patch,
+                    narrative_intent: narrative,
+                    narrative_role: narrative,
+                    scene_type_label: sceneTypeLabelFromRole(narrative),
+                    has_narrative_intent_override: narrative !== (s.auto_narrative_intent || s.auto_narrative_role),
+                  };
+                }
+                if (p.clip_source_taxonomy) {
+                  patch.has_clip_taxonomy_override =
+                    p.clip_source_taxonomy !== (s.auto_clip_source_taxonomy || s.clip_source_taxonomy);
+                }
+                patchScene(s.scene_index, patch);
+                patchDraft(s.scene_index, patch);
+                if (sessionId) {
+                  void patchSceneSemanticIntent(sessionId, s.scene_index, {
+                    human_narrative_intent: patch.human_narrative_intent ?? narrative,
+                    human_clip_source_taxonomy: patch.human_clip_source_taxonomy ?? p.clip_source_taxonomy,
+                    human_emotional_intent: patch.human_emotional_intent ?? p.emotional_intent,
+                  }).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+                }
+              }}
               onTimingChange={(start, end) => setSceneTiming(s.scene_index, start, end)}
               onResetScene={() => resetScene(s.scene_index)}
               onAccept={() => void reviewScene(s.scene_index, "accepted")}
               onReject={() => void reviewScene(s.scene_index, "rejected")}
               onRestore={() => void reviewScene(s.scene_index, "pending")}
-              onMergeNext={mergeTarget !== null ? () => void openMergePreview(s.scene_index, mergeTarget) : undefined}
+              onMergeNext={
+                mergeTarget !== null
+                  ? (anchor) => void openMergePreview(s.scene_index, mergeTarget, anchor)
+                  : undefined
+              }
             />
           );
         })}
       </div>
 
-      {mergePreview && mergePair ? (
-        <MergePreviewCard
+      {mergePreview && mergePair && mergeAnchorRect ? (
+        <MergeFloatingDialog
           preview={mergePreview}
+          anchorRect={mergeAnchorRect}
           sceneA={draftScenes.find((s) => s.scene_index === mergePair.a)}
           sceneB={draftScenes.find((s) => s.scene_index === mergePair.b)}
           merging={merging}
-          onCancel={() => setMergePreview(null, null)}
+          mergeError={mergeError}
+          onCancel={() => setMergePreview(null, null, null)}
           onConfirm={() => {
-            setMerging(true);
-            void mergeWithNext(mergePair.a, mergePair.b)
-              .then(async () => {
-                if (sessionId) {
-                  const { getTrainingSession } = await import("../api/editorialTrainingApi");
-                  const w = await getTrainingSession(sessionId);
-                  useTrainingWorkspaceStore.getState().hydrateScenesFromWorkspace(w);
-                  initFromScenes(useTrainingWorkspaceStore.getState().sceneDrafts);
-                }
-              })
-              .finally(() => {
-                setMerging(false);
-                setMergePreview(null, null);
-              });
+            void executeMerge(mergePair.a, mergePair.b);
           }}
         />
       ) : null}

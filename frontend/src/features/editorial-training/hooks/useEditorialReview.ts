@@ -9,6 +9,7 @@ import {
   setSceneReviewStatus,
 } from "../api/editorialReviewApi";
 import type { EditorialReviewSummaryDto, ReviewStatus } from "../types/trainingWorkspace";
+import { useTimelineDraftStore } from "../state/timelineDraftStore";
 import { useTrainingWorkspaceStore } from "../state/trainingWorkspaceStore";
 
 export function useEditorialReview() {
@@ -44,7 +45,9 @@ export function useEditorialReview() {
   const reviewScene = useCallback(
     async (sceneIndex: number, status: ReviewStatus) => {
       if (!sessionId) return;
-      const scene = useTrainingWorkspaceStore.getState().sceneDrafts.find((s) => s.scene_index === sceneIndex);
+      const scene =
+        useTimelineDraftStore.getState().draftScenes.find((s) => s.scene_index === sceneIndex) ??
+        useTrainingWorkspaceStore.getState().sceneDrafts.find((s) => s.scene_index === sceneIndex);
       setLoading(true);
       setError(null);
       try {
@@ -52,7 +55,7 @@ export function useEditorialReview() {
           session_id: sessionId,
           status,
           clip_id: scene?.clip_id,
-          narrative_function: scene?.narrative_role,
+          narrative_function: scene?.narrative_intent ?? scene?.narrative_role,
           transition_type: scene?.transition_type,
         });
         applyReviewStatus(sceneIndex, status);

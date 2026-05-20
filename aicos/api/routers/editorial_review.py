@@ -25,6 +25,7 @@ from aicos.models.schemas import (
     EditorialSceneReviewStateOut,
     EditorialSceneReviewStatusIn,
 )
+from aicos.services.editorial_semantic_intent_factory import build_editorial_semantic_intent_service
 from aicos.services.editorial_review_factory import (
     build_bulk_review_service,
     build_merge_scenes_service,
@@ -120,6 +121,17 @@ def set_scene_review_status(scene_id: str, body: EditorialSceneReviewStatusIn) -
                 notes=body.notes,
                 confidence_override=body.confidence_override,
             )
+            if body.narrative_function:
+                try:
+                    build_editorial_semantic_intent_service().set_human_narrative_intent(
+                        session,
+                        body.session_id,
+                        int(scene_id),
+                        body.narrative_function,
+                        reviewer=body.reviewer,
+                    )
+                except ValueError:
+                    pass
             _maybe_ingest_feedback(
                 session,
                 session_id=body.session_id,

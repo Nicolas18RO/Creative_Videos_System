@@ -1063,6 +1063,22 @@ class TimelineSceneViewModel(BaseModel):
     hook_score: float = 0.0
     scene_type_label: str = ""
     narrative_role: str = ""
+    narrative_intent: str = ""
+    clip_source_taxonomy: str = ""
+    auto_clip_source_taxonomy: str = ""
+    human_clip_source_taxonomy: str | None = None
+    auto_narrative_intent: str = ""
+    human_narrative_intent: str | None = None
+    emotional_intent: str = "NEUTRAL"
+    auto_emotional_intent: str = "NEUTRAL"
+    human_emotional_intent: str | None = None
+    audio_fragment_text: str = ""
+    visual_style_label: str = ""
+    has_narrative_intent_override: bool = False
+    has_clip_taxonomy_override: bool = False
+    auto_narrative_role: str = ""
+    human_narrative_role: str | None = None
+    has_category_override: bool = False
     time_start: float = 0.0
     time_end: float = 0.0
     duration_seconds: float = 0.0
@@ -1106,6 +1122,50 @@ class EditorialTrainingSessionOut(BaseModel):
     creative_label: str = ""
     product_category: str = ""
     notes: str = ""
+
+
+# --- Fase 6.7.X: Editorial category override ---
+
+
+class EditorialCategoryOverrideSetIn(BaseModel):
+    human_narrative_role: str = Field(..., max_length=64)
+    auto_narrative_role: str | None = Field(default=None, max_length=64)
+    reviewer: str = Field(default="human", max_length=128)
+
+
+class EditorialCategoryOverrideOut(BaseModel):
+    session_id: str
+    scene_index: int
+    auto_narrative_role: str
+    human_narrative_role: str | None = None
+    effective_narrative_role: str
+    has_category_override: bool = False
+
+
+class EditorialSemanticIntentPatchIn(BaseModel):
+    human_narrative_intent: str | None = Field(default=None, max_length=64)
+    human_clip_source_taxonomy: str | None = Field(default=None, max_length=64)
+    human_emotional_intent: str | None = Field(default=None, max_length=64)
+    reviewer: str = Field(default="human", max_length=128)
+
+
+class EditorialSemanticIntentOut(BaseModel):
+    session_id: str
+    scene_index: int
+    clip_id: str = ""
+    clip_source_taxonomy: str
+    auto_clip_source_taxonomy: str
+    human_clip_source_taxonomy: str | None = None
+    narrative_intent: str
+    auto_narrative_intent: str
+    human_narrative_intent: str | None = None
+    emotional_intent: str
+    auto_emotional_intent: str
+    human_emotional_intent: str | None = None
+    audio_fragment_text: str = ""
+    visual_style_label: str = ""
+    has_narrative_intent_override: bool = False
+    has_clip_taxonomy_override: bool = False
 
 
 # --- Fase 6.7.1: Editorial human review ---
@@ -1326,6 +1386,49 @@ class TimelineSaveAdjustmentsResponse(BaseModel):
     validation: TimelineValidationResultOut
     adjustments_saved: list[EditorialTimelineAdjustmentOut] = Field(default_factory=list)
     timeline: dict | None = None
+
+
+# --- Fase 6.7.1: Editorial dataset session registry ---
+
+
+class EditorialRegistrySessionOut(BaseModel):
+    session_id: str
+    creative_id: str
+    creative_label: str = ""
+    project_label: str = ""
+    product_category: str = ""
+    status: str
+    committed_at: str | None = None
+    created_at: str
+    updated_at: str
+    scene_count: int = 0
+    duration_seconds: float = 0.0
+    has_feedback: bool = False
+    has_timeline: bool = False
+    notes: str = ""
+    corrections_count: int = 0
+
+
+class EditorialRegistrySummaryOut(BaseModel):
+    total: int = 0
+    committed: int = 0
+    awaiting_human: int = 0
+    analyzing: int = 0
+    failed: int = 0
+    draft: int = 0
+    ready: int = 0
+    with_timeline: int = 0
+    with_feedback: int = 0
+
+
+class EditorialRegistryListResponse(BaseModel):
+    sessions: list[EditorialRegistrySessionOut] = Field(default_factory=list)
+    summary: EditorialRegistrySummaryOut
+
+
+class EditorialRegistryDuplicateCheckResponse(BaseModel):
+    possible_duplicates: list[EditorialRegistrySessionOut] = Field(default_factory=list)
+    duplicate_count: int = 0
 
 
 # --- Fase 6.4: Style retrieval (presentación API) ---

@@ -1,21 +1,48 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { CreateTrainingSessionBody } from "../api/editorialTrainingApi";
+import type { EditorialRegistrySessionDto } from "../types/editorialRegistry";
 
 type Props = {
   disabled?: boolean;
   onCreate: (body: CreateTrainingSessionBody) => Promise<void>;
+  onCheckDuplicates?: (creativeId: string, creativeLabel: string) => Promise<EditorialRegistrySessionDto[]>;
 };
 
-export function TrainingSessionForm({ disabled, onCreate }: Props) {
+export function TrainingSessionForm({ disabled, onCreate, onCheckDuplicates }: Props) {
   const [projectName, setProjectName] = useState("");
   const [creativeName, setCreativeName] = useState("");
   const [productCategory, setProductCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [dupes, setDupes] = useState<EditorialRegistrySessionDto[]>([]);
+
+  useEffect(() => {
+    if (!onCheckDuplicates || !creativeName.trim()) {
+      setDupes([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void onCheckDuplicates("", creativeName.trim()).then(setDupes);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [creativeName, onCheckDuplicates]);
 
   return (
     <section className="et-card">
       <h2>Paso 1 — Crear sesión de entrenamiento</h2>
+      {dupes.length > 0 ? (
+        <div className="et-warn et-registry-dupes">
+          <strong>Posible duplicado ({dupes.length})</strong>
+          <ul>
+            {dupes.slice(0, 3).map((d) => (
+              <li key={d.session_id}>
+                {d.creative_label || d.creative_id} · {d.status}
+                {d.committed_at ? " · ya en dataset" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="et-grid2">
         <div className="et-stack">
           <label className="et-label">Nombre del proyecto</label>

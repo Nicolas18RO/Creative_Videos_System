@@ -716,6 +716,49 @@ class EditorialTimelineAdjustmentRow(Base):
     )
 
 
+class EditorialSceneSemanticIntentRow(Base):
+    """Fase 6.7.X: taxonomía clip (carpeta) separada de intención narrativa (audio)."""
+
+    __tablename__ = "editorial_scene_semantic_intents"
+    __table_args__ = (UniqueConstraint("session_id", "scene_index", name="uq_editorial_semantic_intent_scene"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    clip_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    auto_clip_source_taxonomy: Mapped[str] = mapped_column(String(64), nullable=False, default="NATURAL")
+    human_clip_source_taxonomy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    auto_narrative_intent: Mapped[str] = mapped_column(String(64), nullable=False, default="NATURAL")
+    human_narrative_intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    auto_emotional_intent: Mapped[str] = mapped_column(String(64), nullable=False, default="NEUTRAL")
+    human_emotional_intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audio_fragment_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    visual_style_label: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    reviewer: Mapped[str] = mapped_column(String(128), nullable=False, default="human")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
+class EditorialSceneCategoryOverrideRow(Base):
+    """Fase 6.7.X: override humano de categoría editorial por escena (auto inmutable)."""
+
+    __tablename__ = "editorial_scene_category_overrides"
+    __table_args__ = (UniqueConstraint("session_id", "scene_index", name="uq_editorial_category_override_scene"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    auto_narrative_role: Mapped[str] = mapped_column(String(64), nullable=False, default="NATURAL")
+    human_narrative_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewer: Mapped[str] = mapped_column(String(128), nullable=False, default="human")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
 class EditorialTrainingSessionRow(Base):
     """Fase 6.7: sesión de entrenamiento editorial humano-en-el-bucle."""
 

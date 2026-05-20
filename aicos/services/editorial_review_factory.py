@@ -45,6 +45,13 @@ def build_bulk_review_service(app_cfg: AppConfig | None = None) -> BulkReviewSer
 def build_merge_scenes_service(app_cfg: AppConfig | None = None) -> MergeScenesService:
     cfg = app_cfg or get_config()
     workspace = build_editorial_training_workspace_service(cfg)
+    from aicos.services.editorial_semantic_intent_factory import build_editorial_semantic_intent_service
+
+    semantic = build_editorial_semantic_intent_service(cfg)
+
+    def _semantic_merge(session, session_id, **kwargs):
+        semantic.merge_semantic_intents_after_scene_merge(session, session_id, **kwargs)
+
     return MergeScenesService(
         timeline_read=SqlCreativeTimelineRepository(),
         timeline_write=SqlCreativeTimelineRepository(),
@@ -52,4 +59,5 @@ def build_merge_scenes_service(app_cfg: AppConfig | None = None) -> MergeScenesS
         review_repo=SqlEditorialSceneReviewRepository(),
         merge_repo=SqlEditorialSceneMergeRepository(),
         timeline_builder_submit=_submit_timeline_adapter(workspace),
+        semantic_intent_merge=_semantic_merge,
     )

@@ -164,6 +164,8 @@ class EditorialTrainingWorkspaceService:
         session: Any,
         session_id: str,
         raw_scenes: tuple[RawTimelineSceneInput, ...],
+        *,
+        from_auto_detection: bool = False,
     ) -> CreativeTimeline:
         self._require_enabled()
         s = self._get_or_raise(session, session_id)
@@ -174,13 +176,25 @@ class EditorialTrainingWorkspaceService:
             EditorialTrainingSessionStatus.AWAITING_HUMAN,
         ):
             raise ValueError("editorial_training_invalid_status_for_timeline_submit")
+        from aicos.services.editorial_semantic_intent_factory import build_editorial_semantic_intent_service
+
+        semantic_svc = build_editorial_semantic_intent_service()
+        merged_raw = semantic_svc.prepare_raw_for_timeline_build(
+            session,
+            session_id,
+            raw_scenes,
+            from_auto_detection=from_auto_detection,
+        )
         timeline = self._timeline_builder.build_from_raw_scenes(
             creative_id=s.creative_id,
             audio_path=s.audio_path,
             final_video_path=s.final_video_path,
-            raw_scenes=raw_scenes,
+            raw_scenes=merged_raw,
             session=session,
         )
+        timeline = semantic_svc.apply_to_timeline(session, session_id, timeline)
+        if session is not None and hasattr(self._timeline_read, "save"):
+            self._timeline_read.save(session, timeline)
         now = datetime.now(timezone.utc)
         self._persistence.save(
             session,

@@ -7,12 +7,36 @@ const NARRATIVE_OPTIONS = [
   "RESULT",
   "AUTHORITY",
   "SOCIAL_PROOF",
+  "PRODUCT",
   "NATURAL",
   "CTA",
 ] as const;
 
+export function sceneTypeLabelFromRole(narrativeRole: string): string {
+  const nr = (narrativeRole || "").trim().toUpperCase();
+  if (nr === "HOOK") return "Hook Scene";
+  if (nr === "CTA") return "Call To Action";
+  if (nr === "PRODUCT") return "Product Scene";
+  if (nr) return nr.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return "Scene";
+}
+
 export function narrativeRoles(): readonly string[] {
   return NARRATIVE_OPTIONS;
+}
+
+export function clipSourceTaxonomies(): readonly string[] {
+  return NARRATIVE_OPTIONS;
+}
+
+export function narrativeIntents(): readonly string[] {
+  return NARRATIVE_OPTIONS;
+}
+
+const EMOTIONAL_OPTIONS = ["FEAR", "HOPE", "URGENCY", "TRUST", "CURIOSITY", "EMPATHY", "NEUTRAL"] as const;
+
+export function emotionalIntents(): readonly string[] {
+  return EMOTIONAL_OPTIONS;
 }
 
 export function energyToVisualEnergy(label: string): number {
