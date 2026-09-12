@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
+
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, load_only
@@ -138,6 +140,40 @@ def count_variants(
 
 def get_clip_by_id(session: Session, clip_id: str) -> ClipRow | None:
     return session.get(ClipRow, clip_id)
+
+
+def _clip_by_absolute_path(session: Session, absolute_path: str | None) -> ClipRow | None:
+    if not absolute_path:
+        return None
+    row = session.execute(select(ClipRow).where(ClipRow.absolute_path == absolute_path)).scalar_one_or_none()
+    if row is not None:
+        return row
+    try:
+        resolved = str(Path(absolute_path).resolve())
+    except OSError:
+        return None
+    if resolved == absolute_path:
+        return None
+    return session.execute(select(ClipRow).where(ClipRow.absolute_path == resolved)).scalar_one_or_none()
+
+
+def find_clip_for_organization(
+    session: Session,
+    *,
+    clip_id: str | None,
+    source_absolute_path: str | None,
+    destination_absolute_path: str | None,
+) -> ClipRow | None:
+    """Localiza el clip a actualizar: id explícito, path de origen o path de destino."""
+    if clip_id:
+        row = session.get(ClipRow, clip_id)
+        if row is not None:
+            return row
+    for candidate in (source_absolute_path, destination_absolute_path):
+        row = _clip_by_absolute_path(session, candidate)
+        if row is not None:
+            return row
+    return None
 
 
 def library_stats(session: Session) -> dict[str, int]:

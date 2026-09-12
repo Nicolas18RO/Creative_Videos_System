@@ -2,7 +2,7 @@
 ### Sistema de Inteligencia Creativa Audiovisual para Producción de Ads de Dropshipping
 
 **Versión:** 2.1  
-**Fecha:** Mayo 2025 (addendum Clip Intelligence: septiembre 2026)  
+**Fecha:** Mayo 2025 (addendum Clip Intelligence: septiembre 2026; addendum ingestión no clasificada: septiembre 2026)  
 **Tipo de proyecto:** Local-first · AI-native · Cursor-first development  
 **Volumen de biblioteca analizado:** ~1,200+ clips catalogados  
 **Categorías de producto detectadas:** Salud/Bienestar, Vehículos, Kids, Hogar
@@ -1746,6 +1746,19 @@ HUMAN/USAGE (feedback y utilización) no se confunden con OBSERVED/INFERRED (lo 
 **Procedencia (concepto futuro):** la capacidad deberá poder conservar cuándo se ejecutó un análisis, qué categoría de modelo se usó, versión, resultado, confianza y posibles correcciones humanas. No se define tabla, columnas ni migración.
 
 **Modelos:** no se eligen implementaciones concretas. Categorías tecnológicas candidatas: object detection, visual/multimodal understanding, OCR, audio/transcription, visual embeddings, fusion. Tecnologías como YOLO son ejemplos de candidatos, no una decisión de arquitectura.
+
+**Addendum (septiembre 2026) — Ingestión futura de clips no clasificados:**
+
+Estado: FUTURO / NO IMPLEMENTADO. No cambia M1–M4 ni activa rutas en `config.yaml`.
+
+Además del análisis de contenido sobre un `clip_id` ya indexado, AICOS deberá poder recibir clips nuevos aún no analizados por dos puntos de entrada:
+
+1. Carpeta de ingestión temporal (requisito futuro, no activo): `C:\Users\nicor\Videos\Clips_Temporal`. Zona de staging. No es la biblioteca final (`library_root`).
+2. Drag & drop de un único archivo de video en React, hacia una zona de análisis.
+
+Flujo futuro: Ingestión → Clip Intelligence → clasificación / metadatos → propuesta de organización → revisión humana cuando corresponda → M4 (decisión validada) → move/rename + SQLite.
+
+Ingestión, Clip Intelligence, clasificación y M4 permanecen responsabilidades separadas. M4 solo ejecuta una decisión de organización ya validada, usando el contrato inbound que ya existe. Este flujo no depende de que el filename ya esté clasificado. No implica YOLO, VLM, OCR, Whisper de clips, OpenCLIP, clustering, tablas nuevas ni cambio de taxonomía.
 
 ---
 

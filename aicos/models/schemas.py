@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TranscriptWord(BaseModel):
@@ -458,20 +458,58 @@ class VisionClassification(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
-class OrganizeRequestBody(BaseModel):
-    """Petición para clasificar (y opcionalmente mover) un clip en `incoming/`."""
+class OrganizationDecisionBody(BaseModel):
+    """Decisión de organización ya aprobada. M4 no interpreta provenance."""
 
-    video_path: str
+    gender: str
+    narrative_function: str
+    subcategory: str
+    context: str | None = None
+    variant: int = 1
+    is_ai_generated: bool = False
+    confidence: float | None = None
+    source: str = "unknown"
+    reason: str = ""
+    provenance_model: str | None = None
+    provenance_version: str | None = None
+
+
+class OrganizeRequestBody(BaseModel):
+    """Preview (default) o apply de organización. Dry-run si `apply` es false."""
+
+    video_path: str | None = None
+    clip_id: str | None = None
     apply: bool = False
+    decision: OrganizationDecisionBody | None = None
+
+    def resolved_clip_id(self) -> str | None:
+        raw = (self.clip_id or "").strip()
+        return raw or None
+
+    def resolved_video_path(self) -> str | None:
+        raw = (self.video_path or "").strip()
+        return raw or None
+
+    @model_validator(mode="after")
+    def require_target(self) -> OrganizeRequestBody:
+        if self.resolved_video_path() is None and self.resolved_clip_id() is None:
+            raise ValueError("Se requiere video_path o clip_id")
+        return self
 
 
 class OrganizeAPIResponse(BaseModel):
-    """Salida del organizador M4."""
+    """Resultado de preview o apply de M4."""
 
     classification: VisionClassification
     confidence_threshold: float
     applied: bool
     destination_path: str | None = None
+    proposed_filename: str | None = None
+    risk: str | None = None
+    action: str | None = None
+    source_path: str | None = None
+    eligible: bool | None = None
+    clip_id: str | None = None
     indexed: bool = False
     message: str | None = None
 

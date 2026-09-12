@@ -755,3 +755,49 @@
   padding: 4px 10px;
   font-size: 0.78rem;
 }
+
+.cs-org-panel {
+  margin: 0 0 14px;
+}
+
+.cs-org-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cs-org-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cs-org-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+}
+
+.cs-org-row strong {
+  word-break: break-all;
+}
+
+.cs-org-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.cs-org-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}

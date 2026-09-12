@@ -15,6 +15,7 @@ import { LibraryExplorer } from "../components/LibraryExplorer";
 import { ProjectSceneRail } from "../components/ProjectSceneRail";
 import { SceneGapPanel } from "../components/SceneGapPanel";
 import { SceneScriptPanel } from "../components/SceneScriptPanel";
+import { ClipOrganizationPanel } from "../organization/components/ClipOrganizationPanel";
 import { useClipFeedback } from "../hooks/useClipFeedback";
 import { useLibraryExplorer } from "../hooks/useLibraryExplorer";
 import { useSceneRetrieval } from "../hooks/useSceneRetrieval";
@@ -43,7 +44,7 @@ export function CinematicRetrievalWorkspacePage({ onOpenTraining }: Props) {
   });
   const { researchScene, clearPreviewSearch } = useSceneRetrieval();
   const { submitFeedback } = useClipFeedback();
-  const { loadMore, manualSearch, exploreSimilarToClip } = useLibraryExplorer();
+  const { loadMore, reloadFirstPage, manualSearch, exploreSimilarToClip } = useLibraryExplorer();
 
   const projects = useStudioStore((s) => s.projects);
   const projectDetail = useStudioStore((s) => s.projectDetail);
@@ -233,6 +234,11 @@ export function CinematicRetrievalWorkspacePage({ onOpenTraining }: Props) {
               <SceneGapPanel gap={gapForScene} explorationHint={explorationHint} />
             </div>
 
+            <ClipOrganizationPanel
+              clip={inspectedLibraryClip}
+              onApplied={() => void reloadFirstPage()}
+            />
+
             <div className="cs-main__toolbar">
               <button
                 type="button"
@@ -263,8 +269,7 @@ export function CinematicRetrievalWorkspacePage({ onOpenTraining }: Props) {
         </div>
 
         <p className="cs-footnote">
-          Export Pipeline y analyze upload activos (Phase 7.4). Playback Studio (7.3). El dashboard PyQt sigue
-          disponible sin cambios.
+          Organización M4: preview en Studio, apply solo con confirmación. El dashboard PyQt sigue disponible.
         </p>
       </div>
     </div>

@@ -1,7 +1,12 @@
+/// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+  },
   plugins: [react()],
   server: {
     port: 5173,
@@ -12,6 +17,7 @@ export default defineConfig({
       "/projects": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/gaps": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/library": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/organize": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/playback": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/export": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/editorial-training": { target: "http://127.0.0.1:8000", changeOrigin: true },

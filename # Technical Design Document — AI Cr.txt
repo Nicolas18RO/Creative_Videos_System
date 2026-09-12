@@ -143,7 +143,7 @@ El sistema tiene cinco capas con responsabilidades claramente separadas:
 
 **Presentation Layer** es la FastAPI local + el frontend (PyQt6 en MVP, Tauri en Fase 4). La FastAPI expone los cuatro pipelines como endpoints HTTP. El frontend consume esta API y nunca importa módulos de backend directamente — esta separación es lo que permite el swap de frontend en Fase 4 sin tocar el backend.
 
-## Flujo de Datos — Dos Caminos Principales
+## Flujo de Datos — Caminos Principales
 
 **Camino 1: Análisis de guion (online, interactivo)**
 
@@ -156,6 +156,19 @@ El `FilesystemWatcher` detecta archivos en `incoming/`. Los pasa al `ClipOrganiz
 **Camino 3 (FUTURO / POST-MVP): Clip Intelligence sobre clips ya indexados**
 
 Distinto del Camino 2. Opera sobre un `clip_id` existente. No es incoming, no clasifica para carpeta, no hace move/rename. Enriquece semántica de **contenido** (OBSERVED / INFERRED) reutilizando, cuando corresponda, FFmpeg/FFprobe, `ClipSemanticMetadata` / `clip_semantic_metadata`, `clip_visual_embeddings`, metadata editorial y la infraestructura de usage (`editorial_metadata`, `editorial_feedback`, `recommendations`, `scenes`, `usage_events`, `clip_usage_history`). Un mismo `clip_id` puede tener múltiples usos editoriales potenciales sin duplicar el archivo. El algoritmo de muestreo/segmentos/keyframes **no se define** en este TDD. Será una capacidad pesada y, cuando se implemente, deberá ejecutarse como job de fondo; el worker **no se diseña aquí**.
+
+**Camino 4 (FUTURO / NO IMPLEMENTADO): Ingestión de clips no clasificados**
+
+Distinto del Camino 2 (`incoming/` → M4) y del Camino 3 (Intelligence sobre `clip_id` ya indexado).
+
+Puntos de entrada futuros:
+
+- Carpeta temporal `C:\Users\nicor\Videos\Clips_Temporal` (requisito de configuración futura; no es `incoming_folder` activo ni `library_root`).
+- Drag & drop individual en React.
+
+Flujo: Ingestión → Clip Intelligence → Classification → Human Review → M4 Organizer (contrato de decisión ya existente).
+
+No se implementa ahora. No se diseñan tablas, watcher, worker, modelos ni endpoints. No modifica el comportamiento actual de M4.
 
 ## Boundaries Estrictos
 
@@ -2627,6 +2640,8 @@ La arquitectura modular del AI-COS hace que ninguno de estos cambios sea un rewr
 **Capas conceptuales:** OBSERVED, INFERRED, EDITORIAL, HUMAN, USAGE. Un `clip_id` puede tener múltiples usos editoriales potenciales sin copiar el archivo. No se define schema de `potential_use` ni tabla Analysis Run; Analysis Run queda como concepto de procedencia (cuándo, modelo/categoría, versión, resultado, confianza, correcciones humanas).
 
 **Reutilización:** FFmpeg/FFprobe, `ClipSemanticMetadata`, visual embeddings, metadata editorial, feedback, recommendations, scenes, usage. No crear sistemas paralelos sin necesidad.
+
+Véase también Camino 4: ingestión futura de clips no clasificados hacia una decisión de M4. No implementado.
 
 ---
 

@@ -128,6 +128,26 @@ export type LibraryStatsDto = {
   naming_compliant: number;
 };
 
+export type OrganizeRequestDto = {
+  video_path?: string | null;
+  clip_id?: string | null;
+  apply?: boolean;
+};
+
+export type OrganizeResultDto = {
+  applied: boolean;
+  destination_path?: string | null;
+  proposed_filename?: string | null;
+  risk?: string | null;
+  action?: string | null;
+  source_path?: string | null;
+  eligible?: boolean | null;
+  clip_id?: string | null;
+  indexed?: boolean;
+  message?: string | null;
+  confidence_threshold?: number;
+};
+
 export type AnalyzeHealthCheckDto = {
   name: string;
   status: "ok" | "warn" | "error";
