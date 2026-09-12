@@ -6,10 +6,11 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from aicos.database.db import session_scope
 from aicos.models.schemas import AnalyzeAPIResponse, AnalyzeHealthResponse, AnalyzeRequestBody
+from aicos.services.export_pipeline_factory import build_studio_analyze_upload_service
 from aicos.modules.script_analyzer import analyze_audio
 from aicos.services import analyze_health_service, project_service
 from aicos.services.analyze_exceptions import AnalyzePipelineError, wrap_stage_exception
@@ -116,3 +117,37 @@ async def analyze(body: AnalyzeRequestBody) -> AnalyzeAPIResponse:
 
     logger.info("[Analyze] POST success total_elapsed=%.3fs scenes=%s", time.perf_counter() - t0, len(result.scenes))
     return result
+
+
+@router.post("/upload", response_model=AnalyzeAPIResponse)
+async def analyze_upload(
+    file: UploadFile = File(...),
+    project_name: str = Form("Proyecto"),
+    product_name: str | None = Form(None),
+    product_category: str = Form("salud/bienestar"),
+    target_audience: str = Form("adultos 35-55"),
+    gender_hint_default: str | None = Form(None),
+    include_clip_search: bool = Form(True),
+    persist: bool = Form(True),
+    enable_intelligence: bool = Form(True),
+) -> AnalyzeAPIResponse:
+    """Sube audio desde React y ejecuta el pipeline M1+M2+M3."""
+    upload_svc = build_studio_analyze_upload_service()
+    try:
+        data = await file.read()
+        stored = upload_svc.save_audio(file.filename or "audio.mp3", data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    body = AnalyzeRequestBody(
+        audio_path=stored.absolute_path,
+        project_name=project_name,
+        product_name=product_name,
+        product_category=product_category,
+        target_audience=target_audience,
+        gender_hint_default=gender_hint_default,
+        include_clip_search=include_clip_search,
+        persist=persist,
+        enable_intelligence=enable_intelligence,
+    )
+    return await analyze(body)

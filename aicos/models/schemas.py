@@ -548,6 +548,10 @@ class SceneDetailOut(BaseModel):
     narrative_function: str
     is_hook: bool
     gender_hint: str | None = None
+    selected_clip_id: str | None = Field(
+        default=None,
+        description="Clip asignado a la escena (auto rank-1 o confirmado por feedback).",
+    )
     recommendations: list[RecommendationDetail] = Field(default_factory=list)
 
 
@@ -556,6 +560,213 @@ class ProjectDetailResponse(BaseModel):
 
     project: ProjectSummary
     scenes: list[SceneDetailOut] = Field(default_factory=list)
+
+
+# --- Phase 7.2: Project timeline engine (cinematic studio) ---
+
+
+class ProjectTimelineSceneOut(BaseModel):
+    scene_id: str
+    scene_index: int
+    start_ms: int
+    end_ms: int
+    duration_ms: int
+    start_sec: float
+    end_sec: float
+    text: str
+    concept: str
+    narrative_function: str
+    is_hook: bool
+    gender_hint: str | None = None
+    selected_clip_id: str | None = None
+
+
+class ProjectTimelineSnapshotOut(BaseModel):
+    project_id: str
+    timeline_duration_ms: int
+    timeline_duration_sec: float
+    scenes: list[ProjectTimelineSceneOut] = Field(default_factory=list)
+
+
+class ProjectTimelineReorderRequest(BaseModel):
+    from_index: int = Field(ge=0)
+    to_index: int = Field(ge=0)
+
+
+class ProjectTimelineMergeRequest(BaseModel):
+    scene_index_a: int = Field(ge=0)
+    scene_index_b: int = Field(ge=0)
+
+
+class ProjectTimelineSplitRequest(BaseModel):
+    scene_id: str
+    split_at_ms: int = Field(ge=0)
+
+
+class ProjectTimelineTrimRequest(BaseModel):
+    scene_id: str
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+
+
+class ProjectTimelineReplaceClipRequest(BaseModel):
+    scene_id: str
+    clip_id: str
+
+
+# --- Phase 7.3: Playback studio ---
+
+
+class PlaybackSceneMapOut(BaseModel):
+    scene_id: str
+    scene_index: int
+    start_sec: float
+    end_sec: float
+    duration_sec: float
+    text: str
+    concept: str
+    narrative_function: str
+    selected_clip_id: str | None = None
+    clip_stream_url: str | None = None
+
+
+class PlaybackWaveformOut(BaseModel):
+    duration_sec: float
+    bucket_count: int
+    peaks: list[float] = Field(default_factory=list)
+
+
+class PlaybackSessionOut(BaseModel):
+    project_id: str
+    project_name: str = ""
+    duration_sec: float = 0.0
+    has_project_audio: bool = False
+    has_waveform: bool = False
+    audio_url: str = ""
+    waveform_url: str = ""
+    scenes: list[PlaybackSceneMapOut] = Field(default_factory=list)
+    waveform: PlaybackWaveformOut | None = None
+
+
+# --- Phase 7.4: Export pipeline ---
+
+
+class ExportTimelineSceneOut(BaseModel):
+    scene_id: str
+    scene_index: int
+    start_ms: int
+    end_ms: int
+    duration_ms: int
+    text: str
+    concept: str
+    narrative_function: str
+    selected_clip_id: str | None = None
+    is_hook: bool = False
+
+
+class ExportAssetDependencyOut(BaseModel):
+    clip_id: str
+    absolute_path: str
+    exists_on_disk: bool
+    duration_ms: int | None = None
+    filename: str = ""
+
+
+class ProjectEditorialBundleOut(BaseModel):
+    format_version: str
+    project_id: str
+    project_name: str
+    status: str = "draft"
+    audio_file_path: str | None = None
+    transcript_path: str | None = None
+    product_name: str | None = None
+    product_category: str | None = None
+    target_audience: str | None = None
+    snapshot_id: str | None = None
+    created_at: str | None = None
+    scenes: list[ExportTimelineSceneOut] = Field(default_factory=list)
+    assets: list[ExportAssetDependencyOut] = Field(default_factory=list)
+
+
+class CapCutTrackEntryOut(BaseModel):
+    order: int
+    scene_id: str
+    scene_index: int
+    timeline_start_ms: int
+    timeline_end_ms: int
+    duration_ms: int
+    clip_id: str | None = None
+    clip_path: str | None = None
+    clip_exists: bool = False
+    text: str = ""
+    concept: str = ""
+    narrative_function: str = "NATURAL"
+
+
+class CapCutManifestOut(BaseModel):
+    format_version: str
+    project_id: str
+    project_name: str
+    audio_master_path: str | None = None
+    timeline_duration_ms: int = 0
+    generated_at: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    entries: list[CapCutTrackEntryOut] = Field(default_factory=list)
+    asset_dependencies: list[ExportAssetDependencyOut] = Field(default_factory=list)
+
+
+class ExportManifestEntryOut(BaseModel):
+    scene_id: str
+    scene_index: int
+    start_ms: int
+    end_ms: int
+    clip_id: str | None = None
+    clip_path: str | None = None
+    clip_ready: bool = False
+
+
+class ExportManifestOut(BaseModel):
+    format_version: str
+    project_id: str
+    project_name: str
+    timeline_duration_ms: int = 0
+    audio_path: str | None = None
+    missing_assets: list[str] = Field(default_factory=list)
+    entries: list[ExportManifestEntryOut] = Field(default_factory=list)
+
+
+class ProjectSnapshotMetaOut(BaseModel):
+    snapshot_id: str
+    created_at: str
+    path: str
+
+
+class ProjectSnapshotListOut(BaseModel):
+    project_id: str
+    snapshots: list[ProjectSnapshotMetaOut] = Field(default_factory=list)
+
+
+class ProjectSnapshotOut(BaseModel):
+    bundle: ProjectEditorialBundleOut
+
+
+class PersistSnapshotOut(BaseModel):
+    snapshot_id: str
+    path: str
+
+
+class WriteManifestOut(BaseModel):
+    path: str
+
+
+class RestoreSnapshotOut(BaseModel):
+    scene_count: int
+
+
+class StudioAnalyzeUploadOut(BaseModel):
+    audio_path: str
+    stored_filename: str
+    size_bytes: int
 
 
 # --- Fase 3: Intelligence / Insights (contratos API) ---

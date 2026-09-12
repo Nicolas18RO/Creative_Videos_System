@@ -36,6 +36,7 @@ class PathsConfig(BaseModel):
     exports: str = "~/.aicos/exports"
     editorial_training_uploads: str = "~/.aicos/editorial_training/uploads"
     timeline_visualization_cache: str = "~/.aicos/timeline_visualization"
+    playback_cache: str = "~/.aicos/playback"
 
 
 class TranscriptionConfig(BaseModel):
@@ -418,6 +419,7 @@ class AppConfig(BaseModel):
             "exports": _expand(self.paths.exports),
             "editorial_training_uploads": _expand(self.paths.editorial_training_uploads),
             "timeline_visualization_cache": _expand(self.paths.timeline_visualization_cache),
+            "playback_cache": _expand(self.paths.playback_cache),
         }
 
 

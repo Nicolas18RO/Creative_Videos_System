@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from sqlalchemy import text
 from aicos.config import get_config
 from aicos.database.db import get_engine
 from aicos.models.schemas import AnalyzeHealthCheck, AnalyzeHealthResponse
+from aicos.runtime.python_env import format_whisper_import_failure, is_project_venv_active
 from aicos.services.ffmpeg_service import FFmpegService
 
 logger = logging.getLogger(__name__)
@@ -85,15 +87,18 @@ def validate_whisper(*, probe_model_load: bool = False) -> AnalyzeHealthCheck:
     try:
         from faster_whisper import WhisperModel
     except ImportError as e:
+        failure_reason, hint = format_whisper_import_failure(e)
         return _check(
             "whisper",
             False,
             message="faster-whisper no está instalado o no se puede importar",
-            failure_reason=str(e),
+            failure_reason=failure_reason,
             recoverable=True,
             model=cfg.model,
             device=cfg.device,
-            hint="Ejecuta: pip install 'aicos[ml]' (o instala el paquete faster-whisper).",
+            python_executable=sys.executable,
+            using_project_venv=is_project_venv_active(),
+            hint=hint,
             elapsed_ms=int((time.perf_counter() - t0) * 1000),
         )
     except OSError as e:

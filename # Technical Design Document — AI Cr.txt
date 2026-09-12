@@ -1,6 +1,6 @@
 # Technical Design Document — AI Creative Operating System (AI-COS)
 
-**Versión:** 1.0  
+**Versión:** 1.1  
 **Tipo:** Technical Design Document (TDD)  
 **Proyecto:** AI Creative Operating System  
 **Stack principal:** Python 3.11 · FastAPI · ChromaDB · SQLite · PyQt6  
@@ -34,7 +34,7 @@
 21. MVP Technical Scope
 22. Development Roadmap
 23. Technical Risks
-24. Future Expansion Opportunities
+24. Future Expansion Opportunities (incluye FO-8 Clip Intelligence, post-MVP)
 
 ---
 
@@ -53,9 +53,13 @@ Un proceso de Python local con cuatro pipelines coordinados:
 - **Ingestion Pipeline:** MP3 → transcript → escenas → conceptos semánticos.
 - **Retrieval Pipeline:** concepto → embedding → ChromaDB query → reranking → recomendaciones.
 - **Gap Pipeline:** escenas sin match → keywords TikTok → prompts IA.
-- **Classification Pipeline:** clip nuevo → frame → visión IA → taxonomía → indexado.
+- **Classification Pipeline:** clip nuevo → frame → visión IA → taxonomía → indexado. Este pipeline es el **Organizer (M4)**: naming y organización física. No es Clip Intelligence.
 
-Estos cuatro pipelines son expuestos vía una FastAPI local en `localhost:8000`. Un frontend PyQt6 (MVP) o Tauri (Fase 4) consume esta API. Todo corre en la misma máquina. No hay servidor externo. No hay base de datos remota. Las únicas llamadas de red son a las APIs de OpenAI/Anthropic para embeddings, LLM y visión.
+**Capacidad futura / POST-MVP (no implementada, no altera M1–M4):**
+
+- **Clip Intelligence Pipeline:** clip ya indexado → análisis de contenido audiovisual (cobertura temporal completa del clip, sin exigir todos los frames) → capas OBSERVED / INFERRED, con overlay HUMAN y contexto USAGE existentes. No mueve ni renombra el archivo. No reemplaza la taxonomía de carpeta.
+
+Estos cuatro pipelines del MVP son expuestos vía una FastAPI local en `localhost:8000`. Un frontend PyQt6 (MVP) o Tauri (Fase 4) consume esta API. Todo corre en la misma máquina. No hay servidor externo. No hay base de datos remota. Las únicas llamadas de red son a las APIs de OpenAI/Anthropic para embeddings, LLM y visión.
 
 ## Flujo Principal
 
@@ -148,6 +152,10 @@ El usuario sube un MP3 al dashboard. La API recibe el archivo, lo pasa al `Scrip
 **Camino 2: Incorporación de clips nuevos (background, asíncrono)**
 
 El `FilesystemWatcher` detecta archivos en `incoming/`. Los pasa al `ClipOrganizer`, que extrae el frame central con FFmpeg, lo envía al `VisionService` para clasificación taxonómica, genera el nombre de archivo correcto, mueve el clip a la carpeta correcta, inserta en SQLite, y vectoriza en ChromaDB. Todo esto ocurre en un thread de background sin bloquear el UI.
+
+**Camino 3 (FUTURO / POST-MVP): Clip Intelligence sobre clips ya indexados**
+
+Distinto del Camino 2. Opera sobre un `clip_id` existente. No es incoming, no clasifica para carpeta, no hace move/rename. Enriquece semántica de **contenido** (OBSERVED / INFERRED) reutilizando, cuando corresponda, FFmpeg/FFprobe, `ClipSemanticMetadata` / `clip_semantic_metadata`, `clip_visual_embeddings`, metadata editorial y la infraestructura de usage (`editorial_metadata`, `editorial_feedback`, `recommendations`, `scenes`, `usage_events`, `clip_usage_history`). Un mismo `clip_id` puede tener múltiples usos editoriales potenciales sin duplicar el archivo. El algoritmo de muestreo/segmentos/keyframes **no se define** en este TDD. Será una capacidad pesada y, cuando se implemente, deberá ejecutarse como job de fondo; el worker **no se diseña aquí**.
 
 ## Boundaries Estrictos
 
@@ -524,6 +532,8 @@ def suggest_taxonomy_placement(scene: Scene) -> str:
 ## 4.9 Auto Classification Engine (`modules/clip_organizer.py`)
 
 **Propósito:** Procesar clips nuevos en `incoming/`, clasificarlos con visión IA según la taxonomía real de la biblioteca, y organizarlos automáticamente.
+
+**Nota (v1.1):** este módulo es el Organizer de M4 (organización física / naming). No debe confundirse con el Clip Intelligence Pipeline (capacidad futura, Camino 3).
 
 **Componentes internos:**
 
@@ -982,6 +992,8 @@ async def persist_project_analysis(analysis: ProjectAnalysis) -> str:
 
 # 8. AI Classification System
 
+Este capítulo documenta la **clasificación taxonómica de M4** (un frame, cinco ejes de naming/carpeta, move/rename, indexado). Esa clasificación **no debe confundirse** con Clip Intelligence (FO-8 / Camino 3): inteligencia de contenido sobre un clip ya indexado, cobertura temporal completa, múltiples usos editoriales potenciales, sin reorganizar el archivo.
+
 ## Pipeline de Clasificación de Clip Nuevo
 
 ### Paso 1: Detección y Validación
@@ -1340,6 +1352,18 @@ Los frames extraídos para Vision API se guardan en `~/.aicos/temp/` y se elimin
 
 # 11. Database Design
 
+## Nota sobre reutilización (v1.1)
+
+Clip Intelligence (FUTURO / POST-MVP) no introduce un almacén paralelo. Cuando se implemente, debe reutilizar las estructuras ya previstas o existentes según corresponda: `clips` / `ClipRow`, `clip_cinematic_metadata`, `clip_visual_embeddings`, `clip_semantic_metadata` / `ClipSemanticMetadata`, `editorial_metadata`, `editorial_feedback`, `recommendations`, `scenes`, `usage_events`, `clip_usage_history`.
+
+`ClipSemanticMetadata` ya contempla conceptualmente `objects_detected`, `people_detected`, `actions_detected`, `environment_type`, `visual_description`, `narrative_roles`, `visual_intents`, `marketing_usage`. La persistencia en producto de esos campos es **parcial**; eso no significa que Clip Intelligence esté implementado.
+
+`clips.narrative_function` permanece como eje de **organización/naming**. No es el único uso editorial posible del clip.
+
+**Analysis Run (concepto futuro únicamente):** la procedencia de un análisis (cuándo se ejecutó, categoría de modelo, versión, resultado, confianza, correcciones humanas) deberá poder conservarse. Este TDD **no** define tabla, columnas SQL, migraciones ni schema físico.
+
+El schema SQL que sigue es el diseño histórico del TDD y **no se altera** en esta revisión.
+
 ## Schema Completo
 
 ```sql
@@ -1584,6 +1608,8 @@ Para la tabla `recommendations`, el índice parcial sobre `accepted IS NOT NULL`
 
 # 12. Multimedia Processing Pipeline
 
+**Nota (v1.1):** Clip Intelligence (FUTURO / POST-MVP) debe reutilizar FFmpeg / FFprobe para inspección y extracción multimedia. No introduce otra herramienta de procesamiento de video. El algoritmo de muestreo no se define aquí.
+
 ## FFmpeg — Comandos Críticos
 
 **Extracción de thumbnail para UI (160×90):**
@@ -1680,6 +1706,19 @@ class VisionService(Protocol):
 ```
 
 Las implementaciones concretas (`OpenAILLMService`, `AnthropicLLMService`, `OpenAIEmbeddingService`, `OpenAIVisionService`) se inyectan vía el container de dependencias de FastAPI.
+
+## Categorías tecnológicas futuras — Clip Intelligence (POST-MVP)
+
+No se seleccionan modelos concretos ni se añaden dependencias en esta revisión. Si se implementa Clip Intelligence, las **categorías** (no las implementaciones) serían:
+
+- object detection (p. ej. YOLO como tecnología *candidata*, no como decisión)
+- visual / multimodal understanding
+- OCR
+- audio / transcription de clip (distinto del pipeline de guion/MP3 de M1)
+- visual embeddings (reutilizar `clip_visual_embeddings` cuando corresponda)
+- fusion (combinar señales OBSERVED/INFERRED sin duplicar almacenes)
+
+FFmpeg / FFprobe siguen siendo la capa de procesamiento multimedia existente (extracción, probe, frames/segmentos). El algoritmo de muestreo no se define aquí.
 
 ## Retry Strategy
 
@@ -1922,6 +1961,8 @@ class JobWorker:
 **`enrich_gap`:** `{gap_id: str}` — Genera keywords TikTok y prompts IA para un gap. Se encola en background después de mostrar el análisis inicial al usuario.
 
 **`reindex_library`:** `{library_root: str, force_all: bool}` — Re-indexa clips no indexados (o todos si `force_all=True`). Solo se encola manualmente por el usuario.
+
+**Nota (v1.1):** Clip Intelligence será una capacidad pesada. Cuando se implemente, deberá ejecutarse como job de fondo (distinto de `classify_clip` de M4). El worker, el payload y el tipo de job **no se diseñan** en esta revisión.
 
 ## Retry Logic
 
@@ -2325,6 +2366,7 @@ Criterio de éxito: El productor completa un flujo de análisis completo sin usa
 - CapCut Export Watcher (Fase 4).
 - GPU acceleration para Whisper (opcional, Fase 2).
 - Tauri frontend (Fase 4).
+- Clip Intelligence / Clip Classification de contenido (FO-8). Es POST-MVP y no altera M4.
 
 ## Qué Fakear en MVP v0/v1
 
@@ -2565,6 +2607,26 @@ LIMIT 10
 - Auth: añadir JWT auth en FastAPI (FastAPI Users library).
 
 La arquitectura modular del AI-COS hace que ninguno de estos cambios sea un rewrite — son reemplazos de implementaciones concretas detrás de interfaces existentes.
+
+## FO-8 — Clip Intelligence Pipeline (FUTURO / POST-MVP)
+
+**Estado:** no implementado. No cambia M1, M2, M3 ni el comportamiento de M4.
+
+**Propósito:** inteligencia de contenido sobre clips ya indexados (Camino 3). Cobertura temporal completa del clip (~2 min típico, hasta ~5 min excepcional) mediante una estrategia futura de muestreo / segmentos / keyframes / análisis selectivo — **sin** fijar FPS, ventanas ni algoritmos.
+
+**Separación:**
+
+- taxonomy = naming / folder organization
+- M4 Organizer (`classify_clip`, Camino 2) = physical organization
+- Clip Intelligence = content intelligence
+- MiniLM + Chroma = existing text retrieval
+- visual embeddings = visual representation
+- editorial metadata = human overlay
+- recommendations / scenes / usage = actual usage context
+
+**Capas conceptuales:** OBSERVED, INFERRED, EDITORIAL, HUMAN, USAGE. Un `clip_id` puede tener múltiples usos editoriales potenciales sin copiar el archivo. No se define schema de `potential_use` ni tabla Analysis Run; Analysis Run queda como concepto de procedencia (cuándo, modelo/categoría, versión, resultado, confianza, correcciones humanas).
+
+**Reutilización:** FFmpeg/FFprobe, `ClipSemanticMetadata`, visual embeddings, metadata editorial, feedback, recommendations, scenes, usage. No crear sistemas paralelos sin necesidad.
 
 ---
 

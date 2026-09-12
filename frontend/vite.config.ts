@@ -6,6 +6,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/analyze": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/search": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/feedback": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/projects": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/gaps": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/library": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/playback": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/export": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/editorial-training": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/editorial-review": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/editorial-timeline": { target: "http://127.0.0.1:8000", changeOrigin: true },

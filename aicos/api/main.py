@@ -19,6 +19,7 @@ from aicos.api.routers import (
     editorial_category,
     editorial_semantic_intent,
     editorial_review,
+    export_pipeline,
     editorial_timeline_precision,
     timeline_visualization,
     feedback,
@@ -29,6 +30,8 @@ from aicos.api.routers import (
     insights,
     library,
     organize,
+    playback,
+    project_timeline,
     projects,
     search,
     taxonomy,
@@ -36,6 +39,7 @@ from aicos.api.routers import (
 from aicos.database.db import init_db
 from aicos.config import get_config
 from aicos.services import analyze_health_service
+from aicos.runtime.python_env import log_runtime_python_context
 from aicos.services.incoming_watcher import start_incoming_watcher, stop_incoming_watcher
 
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +49,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    log_runtime_python_context()
     start_incoming_watcher()
     rt = get_config().runtime
     logger.info(
@@ -100,4 +105,7 @@ app.include_router(
     prefix="/timeline-visualization",
     tags=["timeline_visualization"],
 )
+app.include_router(playback.router, prefix="/playback", tags=["playback"])
+app.include_router(export_pipeline.router, prefix="/export", tags=["export"])
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
+app.include_router(project_timeline.router, prefix="/projects", tags=["project_timeline"])

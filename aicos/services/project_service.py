@@ -277,6 +277,7 @@ def get_project_detail(session: Session, project_id: str) -> ProjectDetailRespon
                 narrative_function=sc.narrative_function,
                 is_hook=bool(sc.is_hook),
                 gender_hint=sc.gender_hint,
+                selected_clip_id=sc.selected_clip_id,
                 recommendations=rec_out,
             )
         )

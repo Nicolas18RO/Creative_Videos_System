@@ -31,6 +31,11 @@ ui = [
 ]
 ml = [
     "faster-whisper>=1.0",
+    "ctranslate2>=4.0,<5",
+    "tokenizers>=0.15",
+    "huggingface-hub>=0.20",
+    "av>=11",
+    "onnxruntime>=1.16",
     "spacy>=3.7",
 ]
 cinematic = [
@@ -49,6 +54,7 @@ aicos-reindex-vectors = "aicos.scripts.reindex_vectors:main"
 aicos-batch-openclip = "aicos.scripts.batch_openclip:main"
 aicos-regen-chroma-fingerprints = "aicos.scripts.regenerate_chroma_fingerprints:main"
 aicos-analyze = "aicos.scripts.analyze_audio:main"
+aicos-serve = "aicos.scripts.run_api:main"
 aicos-dashboard = "aicos.frontend.dashboard:main"
 
 [tool.hatch.build.targets.wheel]

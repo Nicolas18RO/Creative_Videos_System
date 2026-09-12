@@ -1,8 +1,8 @@
 # PRD — AI Creative Operating System (AI-COS)
 ### Sistema de Inteligencia Creativa Audiovisual para Producción de Ads de Dropshipping
 
-**Versión:** 2.0  
-**Fecha:** Mayo 2025  
+**Versión:** 2.1  
+**Fecha:** Mayo 2025 (addendum Clip Intelligence: septiembre 2026)  
 **Tipo de proyecto:** Local-first · AI-native · Cursor-first development  
 **Volumen de biblioteca analizado:** ~1,200+ clips catalogados  
 **Categorías de producto detectadas:** Salud/Bienestar, Vehículos, Kids, Hogar
@@ -28,7 +28,7 @@
 15. Cursor-First Development Strategy
 16. Development Roadmap
 17. Risks and Technical Challenges
-18. Future Opportunities
+18. Future Opportunities (incluye FO-8 Clip Intelligence, post-MVP)
 
 ---
 
@@ -148,9 +148,13 @@ El insight más importante para el diseño del sistema es que **la taxonomía de
 
 El sistema de búsqueda del AI-COS debe aprender a mapear conceptos del guion a estos cinco ejes, y combinarlo con búsqueda vectorial para capturar relaciones semánticas que la taxonomía estricta no puede expresar.
 
+**Aclaración (v2.1):** estos cinco ejes describen la **organización y el naming del archivo** en disco (carpeta, convención de filename, `clips.gender` / `clips.narrative_function` / etc.). No representan todos los posibles usos editoriales de ese clip. Un mismo archivo físico (`clip_id`) puede ser potencialmente útil como PROBLEM, HOOK, EMOTION, RESULT u otras funciones **sin duplicar** el archivo. El retrieval actual puede seguir usando el eje de carpeta como señal; eso no agota la semántica del contenido.
+
 ## 3.3 Evolución del Sistema
 
 El AI-COS aprende con cada uso. Cada decisión del productor (aceptar/rechazar una recomendación) calibra el motor de búsqueda hacia sus preferencias específicas. Con el tiempo, el sistema aprende que para un guion sobre "dolor de rodilla al caminar" el productor prefiere clips de la subcategoría `WALK_PAIN` sobre `KNEE_PAIN` puro, o que prefiere clips femeninos para ciertos tipos de producto.
+
+Ese aprendizaje es de tipo **HUMAN / USAGE**: correcciones, confirmaciones, feedback, clips recomendados, seleccionados o utilizados en una escena. Es distinto de una futura inteligencia de **contenido** (**OBSERVED / INFERRED**): lo que se ve o se oye en el video y lo que se interpreta (acciones, emoción aparente, entorno, descripción). Clip Intelligence (FO-8) cubre esa segunda capa y **no está en el MVP**.
 
 ---
 
@@ -187,6 +191,8 @@ Cuando el score del mejor clip es bajo, activa el flujo de recuperación: genera
 **Output:** Clips clasificados, renombrados según la convención de la biblioteca, indexados
 
 Analiza cada clip nuevo con visión computacional, determina los 5 ejes de la taxonomía (género, función, subcategoría, contexto, número), genera el nombre de archivo correcto, mueve a la carpeta correspondiente, e indexa en ChromaDB.
+
+**Aclaración (v2.1):** M4 es **organización física y naming** (incoming, taxonomía de carpeta, move/rename, indexado). No equivale a Clip Classification / Clip Intelligence (FO-8). M4 no se reemplaza ni cambia de comportamiento por esa capacidad futura.
 
 ## 4.3 Qué NO construir en el MVP
 
@@ -402,6 +408,8 @@ Duración: 3-4 segundos. Movimiento: sutil, orgánico, sin transiciones abruptas
 ```
 
 ## FR-08: Auto Clip Organizer — Taxonomy Mapping (M4)
+
+**Alcance:** la clasificación de FR-08 asigna los **cinco ejes de taxonomía de archivo** (género, función de carpeta, subcategoría, contexto, variante) para naming y colocación. El `narrative_function` resultante es el eje de organización del archivo, no el inventario completo de usos editoriales posibles del clip. Clip Intelligence (FO-8) es una capacidad futura distinta y no forma parte de este requerimiento.
 
 **Proceso de análisis visual con GPT-4o Vision:**
 ```json
@@ -857,6 +865,8 @@ CREATE TABLE clips (
 );
 ```
 
+**Nota (v2.1):** `clips.narrative_function` (y el resto de ejes) son la taxonomía de **carpeta/nombre**. No deben interpretarse como el único uso editorial posible del clip.
+
 ### `projects` — Cada creativo producido
 
 ```sql
@@ -1193,6 +1203,8 @@ Basado en los gaps y la cobertura existente, los prompts más valiosos a cultiva
 ---
 
 # 13. Auto Classification System
+
+Este capítulo describe **M4 (Organizer)**: clasificar para **nombrar y ubicar** un archivo en la taxonomía de biblioteca. No describe Clip Intelligence (FO-8).
 
 ## 13.1 Pipeline Completo de M4
 
@@ -1694,6 +1706,46 @@ El sistema mantiene perfiles por categoría de producto: hooks que funcionaron p
 ## FO-7 — SaaS para Equipos
 
 La arquitectura local-first tiene un camino natural hacia SaaS: SQLite → PostgreSQL, ChromaDB → Pinecone/Weaviate Cloud, PyQt6 → Next.js, FastAPI → FastAPI en cloud. La biblioteca compartida entre productores permite que los golden prompts y el historial de feedback sean activos de equipo, no individuales. Los primeros usuarios son equipos de 2–5 productores de dropshipping.
+
+## FO-8 — Clip Classification / Clip Intelligence
+
+**Estado:** FUTURO / POST-MVP. Esta sección no describe una funcionalidad implementada ni un cambio de M1–M4.
+
+**Propósito:** Analizar el **contenido audiovisual** de un clip ya indexado para enriquecer su semántica, sin reemplazar la taxonomía de carpeta ni el Organizer (M4).
+
+**Qué analiza:** El video (y, cuando exista, su audio asociado) con cobertura **temporal completa** del clip. La biblioteca tiene clips normalmente cercanos a ~2 minutos y excepcionalmente hasta ~5 minutos. “Cobertura completa” significa que la capacidad debe poder dar cuenta de todo el clip; **no** exige que todos los modelos corran sobre todos los frames. Una implementación futura podrá combinar muestreo temporal, segmentos, keyframes y análisis profundo selectivo. Los parámetros concretos (FPS, ventanas, algoritmos) **no se definen aquí**.
+
+**Dimensiones conceptuales (capas, no schema físico):**
+
+| Capa | Qué representa | Ejemplos |
+|---|---|---|
+| OBSERVED | Señales detectables | objetos, personas, texto en pantalla, características técnicas, señales visuales/audio |
+| INFERRED | Interpretación | acciones, estado emocional aparente, entorno, descripción semántica, conceptos |
+| EDITORIAL | Posible uso creativo | posibles usos del clip, posibles funciones narrativas (HOOK, PROBLEM, EMOTION, RESULT, …) |
+| HUMAN | Overlay humano | correcciones, confirmaciones, feedback |
+| USAGE | Uso real | recomendaciones, selección, utilización, historial |
+
+**Múltiples usos:** un único `clip_id` puede ser potencialmente útil para varias funciones editoriales. No se duplica el archivo físico para representar esos usos. La representación persistente de `potential_use` **no se especifica en este PRD**.
+
+**Reutilización (cuando corresponda, sin sistemas paralelos innecesarios):** `ClipRow` / `clips`, `clip_cinematic_metadata`, `clip_visual_embeddings`, `clip_semantic_metadata` / `ClipSemanticMetadata`, `editorial_metadata`, `editorial_feedback`, `recommendations`, `scenes`, `usage_events`, `clip_usage_history`.
+
+`ClipSemanticMetadata` ya contempla conceptualmente campos como `objects_detected`, `people_detected`, `actions_detected`, `environment_type`, `visual_description`, `narrative_roles`, `visual_intents`, `marketing_usage`. Su persistencia en producto es **parcial**. Eso no implica que Clip Intelligence esté implementado.
+
+**Separación de responsabilidades:**
+
+- Taxonomía de 5 ejes = naming / organización de carpetas.
+- M4 Organizer = organización física (incoming, move/rename, indexado).
+- Clip Intelligence = inteligencia de **contenido**.
+- MiniLM + Chroma = retrieval textual existente.
+- Visual embeddings = representación visual.
+- Metadata editorial = overlay humano.
+- Recommendations / scenes / usage = contexto de uso real.
+
+HUMAN/USAGE (feedback y utilización) no se confunden con OBSERVED/INFERRED (lo que el clip muestra o se infiere de él).
+
+**Procedencia (concepto futuro):** la capacidad deberá poder conservar cuándo se ejecutó un análisis, qué categoría de modelo se usó, versión, resultado, confianza y posibles correcciones humanas. No se define tabla, columnas ni migración.
+
+**Modelos:** no se eligen implementaciones concretas. Categorías tecnológicas candidatas: object detection, visual/multimodal understanding, OCR, audio/transcription, visual embeddings, fusion. Tecnologías como YOLO son ejemplos de candidatos, no una decisión de arquitectura.
 
 ---
 

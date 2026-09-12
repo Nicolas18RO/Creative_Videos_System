@@ -21,10 +21,11 @@ def _get_model():
     try:
         from faster_whisper import WhisperModel
     except ImportError as e:
+        from aicos.runtime.python_env import format_whisper_import_failure
+
         logger.exception("faster-whisper no importable")
-        raise RuntimeError(
-            "faster-whisper no está instalado. Instala el extra: pip install 'aicos[ml]'"
-        ) from e
+        _, hint = format_whisper_import_failure(e)
+        raise RuntimeError(f"faster-whisper no está disponible. {hint}") from e
     cfg = get_config().transcription
     logger.info(
         "Cargando modelo Whisper %s (device=%s)…",
